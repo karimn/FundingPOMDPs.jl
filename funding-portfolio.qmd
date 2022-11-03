@@ -1,0 +1,130 @@
+---
+title: "Ranked Interventions"
+format: pdf 
+---
+
+```{r}
+#| include: false
+
+library(tidyverse)
+library(cmdstanr)
+
+register_knitr_engine(override = TRUE)
+```
+
+$i$ indexes observations, $j$ interventions, and $t$ studies.
+
+$$
+\begin{aligned}
+Y_{ijt}(z) &\sim \mathtt{LogNormal}(\mu_{jt} + z\cdot \tau_{jt}, \sigma_{jt})  \\
+\begin{pmatrix}\mu_{jt} \\ \tau_{jt} \\ \sigma_{jt}\end{pmatrix} &\sim \mathtt{Normal}\left(\begin{pmatrix}\mu_j \\ \tau_j \\ \sigma_j\end{pmatrix}, \Sigma_j\right)
+\end{aligned}
+$$
+```{r}
+sim_model <- cmdstan_model("sim_model.stan")
+```
+
+```{r}
+hyperparam <- lst(
+  mu_sd = 1,
+  tau_mean = 0.1,
+  tau_sd = 1,
+  sigma_sd = 1,
+  eta_sd = c(1, 2, 1),
+) 
+
+sim_fit <- sim_model$sample(
+  data = lst(
+    fit = FALSE,
+    sim = TRUE,
+    n_control = 500,
+    n_treated = 500, 
+    y_control = array(dim = 0),
+    y_treated = array(dim = 0),
+    n_study = 1,
+  
+    !!!hyperparam  
+  ),
+  iter_sampling = 3 * 5,
+  parallel_chains = 4,
+)
+
+utility <- function(x, b) 1 - exp(-b * x)
+# utility <- function(x, b) x - (b / 2) * (x^2) 
+
+sim_data <- sim_fit$draws(c("y_control_sim", "y_treated_sim", "tau_toplevel", "tau_study")) %>% 
+  posterior::as_draws_df() %>% {
+    inner_join(
+      tidybayes::gather_draws(., c(y_control_sim, y_treated_sim)[index]) %>% ungroup(),
+      tidybayes::spread_draws(., tau_toplevel, tau_study[study_index]) %>% ungroup() %>% rename(true_tau = tau_toplevel, true_tau_study = tau_study) %>% select(!study_index),
+      by = c(".chain", ".iteration", ".draw")
+    )
+  } %>% 
+  transmute(
+    .draw,
+    assignment = str_extract(.variable, "control|treated"),
+    y = .value,
+    true_tau, true_tau_study
+  ) %>% 
+  nest(data = c(assignment, y)) %>% 
+  mutate(
+    lm_fit = map(data, ~ lm(y ~ assignment, data = .x) %>% broom::tidy()),
+    bayes_fit = map(data, ~ {
+      stan_data <- lst(
+        y_control = filter(.x, fct_match(assignment, "control")) %>% pull(y),
+        y_treated = filter(.x, fct_match(assignment, "treated")) %>% pull(y),
+        n_control = length(y_control),
+        n_treated = length(y_treated),
+      )
+      
+      sim_model$sample(
+        data = list_modify(
+          stan_data,
+          fit = TRUE,
+          sim = FALSE,
+          n_study = 1,
+          !!!hyperparam
+        ),
+        
+        parallel_chains = 4,
+      )
+    }) %>% 
+      map(~ .x$draws("tau_toplevel") %>% posterior::as_draws_df()),
+    
+    lm_te_estimate = map_dbl(lm_fit, ~ filter(.x, fct_match(term, "assignmenttreated")) %>% pull(estimate)),
+    bayes_te_estimate = map_dbl(bayes_fit, ~ mean(.x$tau_toplevel)), 
+    
+    bayes_expected_util = map_dbl(bayes_fit, ~ mean(utility(.x$tau_toplevel, 2))),
+  
+    group_id = ((.draw - 1) %/% 12) + 1
+  ) %>% 
+  group_by(group_id) %>% 
+  mutate(
+    lm_est_rank = n() - min_rank(lm_te_estimate) + 1,
+    bayes_est_rank = n() - min_rank(bayes_te_estimate) + 1,
+    bayes_util_rank = n() - min_rank(bayes_expected_util) + 1,
+    true_rank = n() - min_rank(true_tau) + 1,
+    
+    naive_rank_loss = (true_rank - lm_est_rank)^2,
+    bayes_rank_loss = (true_rank - bayes_util_rank)^2
+  ) 
+```
+
+```{r}
+sim_data %>%
+  ungroup() %>% 
+  slice(1:20) %>% 
+  select(fit_id = .draw, bayes_fit, true_tau, true_tau_study) %>% 
+  unnest(bayes_fit) %>% 
+  ggplot(aes(y = factor(fit_id))) +
+  tidybayes::stat_pointinterval(aes(tau_toplevel)) +
+  geom_point(aes(true_tau, color = "True Tau")) +
+  geom_point(aes(true_tau_study, color = "True Study Tau"))
+
+sim_data %>%
+  ungroup() %>% 
+  ggplot() +
+  geom_point(aes(bayes_te_estimate, bayes_expected_util)) +
+  NULL
+```
+
