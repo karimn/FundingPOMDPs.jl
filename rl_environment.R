@@ -1,8 +1,78 @@
-library(R6)
-library(magrittr)
-library(tidyverse)
+# library(R6)
+# library(magrittr)
+# library(tidyverse)
 
 # Classes -----------------------------------------------------------------
+
+Action <- R6Class(
+  "Action",
+
+  public = list(
+    initialize = function(current_belief, tree_depth, discount = 1) {
+      private$current_belief <- current_belief
+    }
+  ),
+
+  active = list(
+    value = function() stop("Not implemented.")
+  ),
+
+  private = list(
+    current_belief = NULL,
+    simulated_updated_belief = NULL,
+    discount = NULL 
+  )
+)
+
+ActionSet <- R6Class(
+  "ActionSet",
+
+  public = list(
+    initialize = function(action_list, discount, tree_depth) {
+      private$discount <- discount
+      private$action_list <- tibble(action = action_list) %>% 
+        mutate(value = map_dbl(action, ~ .x$action_value)) %>% 
+        arrange(desc(value))
+      private$depth <- tree_depth
+    }
+  ),
+
+  active = list(
+    value = function() self$best_action$action_value,
+    best_action = function() first(private$action_list$action),
+    tree_depth = function() private$depth
+  ),
+
+  private = list(
+    action_list = NULL,
+    discount = NULL,
+    depth = NULL
+  )
+)
+
+BeliefNode <- R6Class(
+  "BeliefNode",
+  
+  public = list(
+    action_set = NULL,
+    
+    initialize = function(current_program_beliefs, prior_belief, action_set) {
+      private$current_program_beliefs <- current_program_beliefs
+      private$prior_belief <- prior_belief
+    }
+  ),
+  
+  active = list(
+    value = function() private$action_set$value,
+    program_beliefs = function() private$current_program_beliefs
+  ),
+  
+  private = list(
+    current_program_beliefs = NULL,
+    prior_belief = NULL
+  )
+)
+
 
 ProgramBelief <- R6Class(
   "ProgramBelief",
@@ -125,7 +195,8 @@ ProgramPeriod <- R6Class(
     
   active = list(
     params = function() private$period_params_data,
-    dataset = function() private$period_data
+    dataset = function() private$period_data,
+    belief = function() private$observed_belief
   ),
     
   private = list(
@@ -164,65 +235,78 @@ Program <- R6Class(
   )
 )
 
+create_environment <- function(num_programs, num_periods, hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
+  model <- cmdstanr::cmdstan_model("sim_model.stan")
+  
+  sim_fit <- model$sample(
+    data = lst(
+      fit = FALSE,
+      sim = TRUE,
+      sim_forward = FALSE,
+      
+      !!!dataset_size,
+      
+      n_study = num_periods,
+      study_size = rep(0, n_study),
+      
+      y_control = array(dim = 0),
+      y_treated = array(dim = 0),
+    
+      !!!hyperparam
+    ),
+    iter_sampling = num_programs,
+    chains = 1, 
+  )
+  
+  posterior::as_draws_df(sim_fit) %>% 
+    rowwise() %>% 
+    group_split() %>% 
+    map(Program$new) %>% 
+    Environment$new()
+}
+
 Environment <- R6Class(
   "Environment",
 
   public = list(
-    initialize = function(num_programs, num_periods, hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
-      private$num_programs = num_programs
-      private$num_periods = num_periods
-      
-      model <- cmdstanr::cmdstan_model("sim_model.stan")
-      
-      sim_fit <- model$sample(
-        data = lst(
-          fit = FALSE,
-          sim = TRUE,
-          sim_forward = FALSE,
-          
-          !!!dataset_size,
-          
-          n_study = num_periods,
-          study_size = rep(0, n_study),
-          
-          y_control = array(dim = 0),
-          y_treated = array(dim = 0),
-        
-          !!!hyperparam
-        ),
-        iter_sampling = num_programs,
-        chains = 1, 
-      )
-      
-      private$programs_list <- posterior::as_draws_df(sim_fit) %>% 
-        rowwise() %>% 
-        group_split() %>% 
-        map(Program$new)
+    initialize = function(programs_list) {
+      private$programs_list <- programs_list 
+      private$periods <- map(private$programs_list, ~ .x$periods) %>% 
+        transpose()
+    },
+    
+    get_initial_observed_belief = function(initial_action_set) {
+      private$periods %>% 
+        first() %>% 
+        map(~ .x$belief) %>% 
+        BeliefNode$new(., NULL, initial_action_set)
     }
   ),
   
   active = list(
+    num_programs = function() length(private$programs_list),
+    num_periods = function() length(private$periods),
     programs = function() private$programs_list
   ),
   
   private = list(
-    num_programs = NULL,
-    num_periods = NULL,
-    programs_list = NULL
+    programs_list = NULL, # list(Program)
+    periods = NULL, # list(ProgramPeriod)
+    current_period = 1
   )
 )
 
 # Testing -----------------------------------------------------------------
-
-hyperparam <- lst(
-  mu_sd = 2,
-  tau_mean = 0.1,
-  tau_sd = 1,
-  sigma_sd = 1,
-  eta_sd = c(1, 2, 1),
-)
-
-test <- Environment$new(10, 5, hyperparam)
-belief <- test$programs[[1]]$periods[[1]]$get_observed_belief(hyperparam = hyperparam)
-sim_beliefs <- belief$get_simulated_beliefs(2)
+# 
+# hyperparam <- lst(
+#   mu_sd = 2,
+#   tau_mean = 0.1,
+#   tau_sd = 1,
+#   sigma_sd = 1,
+#   eta_sd = c(1, 2, 1),
+# )
+# 
+# test <- Environment$new(10, 5, hyperparam)
+# belief <- test$programs[[1]]$periods[[1]]$get_observed_belief(hyperparam = hyperparam)
+# sim_beliefs <- belief$get_simulated_beliefs(2)
 # fit <- belief$fit_to_data(hyperparam, iter_warmup = 1000)
