@@ -2,7 +2,6 @@ library(R6)
 library(magrittr)
 library(tidyverse)
 
-
 # Classes -----------------------------------------------------------------
 
 source("rl_environment.R")
@@ -12,27 +11,24 @@ KBanditAction <- R6Class(
   inherit = Action,
 
   public = list(
-    initialize = function(program_index, ...) {
-      super$intialize(...)
+    initialize = function(program_index) {
       private$program_index <- program_index
+    },
+    
+    calculate_expected_simulated_future_value = function(belief, discount, depth) { 
+      belief$get_sampled_future_beliefs(self) %>%
+        map_dbl(~ .x$expand(discount, depth - 1)) %>%
+        mean()
+    }, 
+    
+    calculate_reward = function(belief) {
+      belief$calculate_expected_reward(private$program_index)
     }
   ),
 
   active = list(
-    value = function() {
-      current_reward <- imap_dbl(private$current_belief$program_beliefs, 
-               function(program_belief, program_index, active_program_index) program_belief$calculate_expected_reward(program_index == active_program_index),
-               private$program_index) %>% 
-        sum()
-      
-      if (private$tree_depth > 0) {
-        return(current_reward + private$discount * private$simulated_updated_belief$value) 
-      } else {
-        return(current_reward)
-      }
-    },
-    
-    active_program_index = function() private$program
+    active_program_index = function() private$program_index,
+    evaluated_programs = function() private$program_index
   ),
 
   private = list(
@@ -46,11 +42,15 @@ KBanditActionSet <- R6Class(
 
   public = list(
     initialize = function(k) {
-      private$action_list <- map(seq(k), KBanditAction$new)
-    }
+      map(seq(k), KBanditAction$new) %>% 
+        super$initialize()
+    },
+    
+    get_next_action_set = function(last_action) KBanditActionSet$new(self$k) 
   ),
 
   active = list(
+    k = function() nrow(private$action_list)
   ),
 
   private = list(
@@ -85,6 +85,13 @@ hyperparam <- lst(
   eta_sd = c(1, 2, 1),
 )
 
-testenv <- create_environment(10, 5, hyperparam)
-intial_action_list <- KBanditActionSet$new()
-top_belief_node <- testenv$get_initial_observed_belief()
+testenv <- create_environment(num_programs = 5, num_periods = 5, hyperparam)
+initial_action_set <- KBanditActionSet$new(testenv$num_programs)
+top_belief_node <- testenv$get_initial_observed_belief(initial_action_set, hyperparam, num_simulated_future_datasets = 2)
+top_belief_node$expand(discount = 0.9, depth = 2)
+
+testenv$programs %>% 
+  map_dfr(~ .x$toplevel_params)
+
+# top_belief_node$program_beliefs %>% 
+#   map_dfr(~ .x$)
