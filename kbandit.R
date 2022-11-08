@@ -21,6 +21,10 @@ KBanditAction <- R6Class(
   active = list(
     active_program_index = function() private$program_index,
     evaluated_programs = function() private$program_index
+  ),
+  
+  private = list(
+    program_index = NULL
   )
 )
 
