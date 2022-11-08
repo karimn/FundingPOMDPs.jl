@@ -2,7 +2,9 @@ Action <- R6Class(
   "Action",
 
   public = list(
-    initialize = function() {},
+    initialize = function(last_action) {
+      private$last_action <- last_action
+    },
     
     expand = function(belief, discount, depth) {
       if (depth > 0) {
@@ -18,6 +20,10 @@ Action <- R6Class(
 
   active = list(
     evaluated_programs = function() stop("Not implemented.")
+  ),
+  
+  private = list(
+    last_action = NULL
   )
 )
 
@@ -32,16 +38,16 @@ ActionSet <- R6Class(
     
     expand = function(belief, discount, depth) {
       private$action_list %<>% 
-        mutate(value = map_dbl(
+        mutate(value = future_map_dbl(
+        # mutate(value = map_dbl(
           action, 
           ~ .x$expand(belief, discount, depth), 
-          # .options = furrr_options(
-          #   packages = c("magrittr", "tidyverse", "furrr"), 
-          #   seed = TRUE,
-          #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
+          .options = furrr_options(
+            packages = c("magrittr", "tidyverse", "furrr"),
+            seed = TRUE,
+            globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
           )
-        ) %>% 
-        # mutate(value = map_dbl(action, function(a) tryCatch({ a$expand(belief, discount, depth) }, error = function(err) browser()))) %>% 
+        )) %>% 
         arrange(desc(value))
        
       return(self$value)
@@ -134,31 +140,27 @@ ProgramBelief <- R6Class(
       
       private$prior_belief <- prior_belief
       
-      belief_fit <- self$fit_to_data(hyperparam, ...)
+      retry <- FALSE
+      repeat {
+        belief_fit <- tryCatch(
+          private$fit_to_data(hyperparam, ...), 
+          error = function(err) { 
+            browser()
+            if (retry) {
+              stop(err)
+            } else {
+              retry <- TRUE
+            }
+          })
+        
+        if (!retry) break
+      }
+     
       belief_draws <- posterior::as_draws_df(belief_fit) %>% 
         ungroup()
       
       private$calculate_reward_param(belief_draws)
       private$save_simulated_future_draws(belief_draws, num_simulated_future_datasets) 
-    },
-    
-    fit_to_data = function(hyperparam, generate_dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), iter_warmup = 500, iter_sampling = iter_warmup) {
-      model <- cmdstanr::cmdstan_model("sim_model.stan")
-      stan_data <- lst(
-        fit = TRUE,
-        sim = TRUE,
-        sim_forward = TRUE,
-        
-        !!!generate_dataset_size,
-        !!!self$all_data,
-        !!!hyperparam
-      )
-      
-      # if (self$is_simulated) {
-      #   model$variational(data = stan_data)
-      # } else {
-        model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4)
-      # }
     },
     
     calculate_expected_reward = function(treated) {
@@ -169,9 +171,13 @@ ProgramBelief <- R6Class(
       hyperparam <- hyperparam %||% self$hyperparam 
       
       private$simulated_future_draws %$%  
-        future_map(
-          sim_draws, ProgramBelief$new, is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, num_simulated_future_datasets = nrow(.), ...,
-          .options = furrr_options(packages = c("magrittr", "tidyverse"), seed = TRUE)
+        # future_map(
+        map(
+          sim_draws, ProgramBelief$new, 
+          is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
+          # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+          num_simulated_future_datasets = if (self$is_simulated && private$prior_belief$is_simulated) 1 else nrow(.), ...,
+          # .options = furrr_options(packages = c("magrittr", "tidyverse"), seed = TRUE)
           ) 
     }
  ),
@@ -200,6 +206,25 @@ ProgramBelief <- R6Class(
     is_simulated_belief = TRUE,
     reward_param_mean = NULL,
     
+    fit_to_data = function(hyperparam, generate_dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), iter_warmup = 500, iter_sampling = iter_warmup) {
+      model <- cmdstanr::cmdstan_model("sim_model.stan")
+      stan_data <- lst(
+        fit = TRUE,
+        sim = TRUE,
+        sim_forward = TRUE,
+        
+        !!!generate_dataset_size,
+        !!!self$all_data,
+        !!!hyperparam
+      )
+      
+      # if (self$is_simulated) {
+      #   model$variational(data = stan_data)
+      # } else {
+      model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4, max_treedepth = 12, refresh = 0, show_messages = FALSE)
+      # }
+    },
+    
     get_dataset_from_draws = function(draws) {
       draws %>% 
         ungroup() %>% 
@@ -212,7 +237,7 @@ ProgramBelief <- R6Class(
         tidybayes::spread_draws(mu_study[period], tau_study[period]) %>% 
         ungroup() %>% 
         filter(period == self$num_studies) %>% 
-        tidybayes::mean_qi() 
+        tidybayes::mean_qi(.width = c(0.8)) 
       
       invisible(private$reward_param_mean)
     },
