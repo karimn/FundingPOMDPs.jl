@@ -3,8 +3,15 @@ KBanditAction <- R6Class(
   inherit = Action,
 
   public = list(
-    initialize = function(program_index) {
+    initialize = function(program_index, last_action) {
       private$program_index <- program_index
+      super$initialize(last_action)
+    }, 
+    
+    expand = function(belief, discount, depth) {
+      # cat(sprintf("Depth = %d, Action %d\n", depth, private$program_index))
+      # cat(sprintf("Expanding (%s)\n", str_c(self$action_trajectory, collapse = ", ")))
+      super$expand(belief, discount, depth)
     },
     
     calculate_expected_simulated_future_value = function(belief, discount, depth) { 
@@ -20,7 +27,15 @@ KBanditAction <- R6Class(
 
   active = list(
     active_program_index = function() private$program_index,
-    evaluated_programs = function() private$program_index
+    evaluated_programs = function() private$program_index,
+    
+    action_trajectory = function() { 
+      if (is_null(private$last_action)) {
+        private$program_index 
+      } else {
+        c(private$last_action$action_trajectory, private$program_index)
+      }
+    }
   ),
   
   private = list(
@@ -33,33 +48,15 @@ KBanditActionSet <- R6Class(
   inherit = ActionSet,
 
   public = list(
-    initialize = function(k) {
-      map(seq(k), KBanditAction$new) %>% 
+    initialize = function(k, last_action = NULL) {
+      map(seq(k), KBanditAction$new, last_action) %>% 
         super$initialize()
     },
     
-    get_next_action_set = function(last_action) KBanditActionSet$new(self$k) 
+    get_next_action_set = function(last_action) KBanditActionSet$new(self$k, last_action) 
   ),
 
   active = list(
     k = function() nrow(private$action_list)
-  )
-)
-
-KBandit <- R6Class(
-  "KBandit",
-  
-  public = list(
-    initialize = function(environment) {
-      private$env <- environment
-    }
-  ),
-  
-  active = list(
-    k = function() private$env$num_programs
-  ),
-  
-  private = list(
-    env = NULL
   )
 )
