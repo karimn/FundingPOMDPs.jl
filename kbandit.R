@@ -14,15 +14,13 @@ KBanditAction <- R6Class(
       super$expand(belief, discount, depth)
     },
     
-    calculate_expected_simulated_future_value = function(belief, discount, depth) { 
-      belief$get_sampled_future_beliefs(self) %>%
-        map_dbl(~ .x$expand(discount, depth - 1)) %>%
-        mean()
-    }, 
-    
     calculate_reward = function(belief) {
       belief$calculate_expected_reward(private$program_index)
-    }
+    },
+    
+    calculate_reward_range = function(belief, width = 0.8) {
+      belief$calculate_expected_reward_range(private$program_index, width)
+    } 
   ),
 
   active = list(

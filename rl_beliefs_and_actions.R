@@ -10,12 +10,26 @@ Action <- R6Class(
       if (depth > 0) {
         return(self$calculate_reward(belief) + discount * self$calculate_expected_simulated_future_value(belief, discount, depth))
       } else {
-        return(self$calculate_reward(belief))
+        self$calculate_reward_range(belief)["lower"]
       }
     },
     
     calculate_reward = function(belief) stop("Not implemented."), 
-    calculate_expected_simulated_future_value = function(belief, discount, depth) stop("Not implemented.")
+    calculate_reward_range = function(belief, width = 0.8) stop("Not implemented."), 
+    
+    calculate_expected_simulated_future_value = function(belief, discount, depth) { 
+      belief$get_sampled_future_beliefs(self) %>%
+        # map_dbl(
+        future_map_dbl(
+          ~ .x$expand(discount, depth - 1),
+          .options = furrr_options(
+            packages = c("magrittr", "tidyverse", "furrr"),
+            seed = TRUE,
+            globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
+          )
+        ) %>%
+        mean()
+    } 
   ),
 
   active = list(
@@ -38,16 +52,44 @@ ActionSet <- R6Class(
     
     expand = function(belief, discount, depth) {
       private$action_list %<>% 
-        mutate(value = future_map_dbl(
-        # mutate(value = map_dbl(
-          action, 
-          ~ .x$expand(belief, discount, depth), 
-          .options = furrr_options(
-            packages = c("magrittr", "tidyverse", "furrr"),
-            seed = TRUE,
-            globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
-          )
-        )) %>% 
+        mutate(
+          map_dfr(action, ~ .x$calculate_reward_range(belief)),
+          value = -Inf
+        ) %>% 
+        arrange(desc(upper))
+      
+      # Real-Time Belief Space Search
+      
+      if (depth > 0) {
+        num_actions <- nrow(private$action_list) 
+        action_index <- 1
+        highest_lb <- -Inf
+       
+        while(action_index <= num_actions && private$action_list$upper[action_index] >= highest_lb)  {
+          current_value <- private$action_list$action[[action_index]]$expand(belief, discount, depth)
+          private$action_list$value[action_index] <- current_value
+          highest_lb <- max(highest_lb, current_value)
+          action_index <- action_index + 1
+        }
+        
+        # cat(sprintf("Pruned %d actions\n", num_actions - action_index + 1))
+      } else {
+        private$action_list %<>% 
+          mutate(value = lower)
+      }
+        # mutate(
+        #   # value = future_map2_dbl(
+        #   value = map2_dbl(
+        #     action, lower, 
+        #     function(action, upper) {
+        #       action$expand(belief, discount, depth)
+        #     } 
+        #     # .options = furrr_options(
+        #     #   packages = c("magrittr", "tidyverse", "furrr"),
+        #     #   seed = TRUE,
+        #     #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
+        #   )
+      private$action_list %<>% 
         arrange(desc(value))
        
       return(self$value)
@@ -89,18 +131,24 @@ BeliefNode <- R6Class(
         sum()
     },
     
+    calculate_expected_reward_range = function(treated_programs, width = 0.8) {
+      imap_dfr(private$current_program_beliefs,
+               function(program_belief, program_index) program_belief$calculate_expected_reward_range(program_index %in% treated_programs, width)) %>% 
+        colSums()
+    },
+    
     get_sampled_future_beliefs = function(action, ...) {
-      sampled_program_beliefs <- private$current_program_beliefs %>%
-        imap(function(program_belief, program_index, evaluated_programs, ...) {
-          if (program_index %in% evaluated_programs) {
-            program_belief$get_simulated_beliefs(...)
-          } else {
-            # rep(program_belief, program_belief$num_simulated_sampled)
-            map(seq(program_belief$num_simulated_samples), ~ program_belief) # rep() doesn't work on env
-          }
-        }, evaluated_programs = action$evaluated_programs, ...) %>%
-        transpose()
       
+      sampled_program_beliefs <- private$current_program_beliefs %>%
+        imap(function(program_belief, program_index, evaluated_programs, num_sim, ...) {
+          if (program_index %in% evaluated_programs) {
+            program_belief$get_simulated_beliefs(num_sim, ...)
+          } else {
+            map(seq(num_sim), ~ program_belief) # rep() doesn't work on env
+          }
+        }, evaluated_programs = action$evaluated_programs, num_sim = min(map_int(private$current_program_beliefs, ~ .x$num_simulated_samples)),...) %>%
+        transpose()
+     
       sampled_program_beliefs %>% 
         map(BeliefNode$new, prior_belief = self, action_set = private$action_set$get_next_action_set(action))
     }
@@ -164,20 +212,30 @@ ProgramBelief <- R6Class(
     },
     
     calculate_expected_reward = function(treated) {
-      with(private$reward_param_mean, mu_study + treated * tau_study) 
+      with(slice(private$reward_param_mean, 1), mu_study + treated * tau_study) 
     },
     
-    get_simulated_beliefs = function(hyperparam = NULL, ...) {
+    calculate_expected_reward_range = function(treated, width = 0.8) {
+      filter(private$reward_param_mean, .width == width) %>% 
+        with(c(lower = mu_study.lower + treated * tau_study.lower, upper = mu_study.upper + treated * tau_study.upper)) 
+    },
+    
+    get_simulated_beliefs = function(num, hyperparam = NULL, ...) {
       hyperparam <- hyperparam %||% self$hyperparam 
       
-      private$simulated_future_draws %$%  
-        # future_map(
-        map(
+      private$simulated_future_draws %>% 
+        sample_n(num) %$%  
+        future_map(
+        # map(
           sim_draws, ProgramBelief$new, 
           is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
           # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
-          num_simulated_future_datasets = if (self$is_simulated && private$prior_belief$is_simulated) 1 else nrow(.), ...,
-          # .options = furrr_options(packages = c("magrittr", "tidyverse"), seed = TRUE)
+          num_simulated_future_datasets = 1,
+          .options = furrr_options(packages = c("magrittr", "tidyverse"), seed = TRUE)
+            # .options = furrr_options(
+            #   packages = c("magrittr", "tidyverse", "furrr"),
+            #   seed = TRUE,
+            #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
           ) 
     }
  ),
