@@ -3,23 +3,22 @@ ProgramPeriod <- R6Class(
   "ProgramPeriod",
   
   public = list(
-    initialize = function(params, draws) {
+    initialize = function(params, 
+                          draws,
+                          program,
+                          previous_program_period = NULL) {
       private$period_params_data <- params
       private$observed_draws <- draws 
+      private$program_obj <- program
+      private$previous_program_period <- previous_program_period 
+      private$program_period_index <- if (is_null(previous_program_period)) 1 else previous_program_period$period_index + 1
     },
     
     get_observed_belief = function(prior_belief = NULL,
-                                   hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("hyperparameters not specified"), 
-                                   recalculate = FALSE,
-                                   num_simulated_future_datasets = 1,
+                                   hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("hyperparameters not specified"),
+                                   num_simulated_future_datasets = if (!is_null(prior_belief)) prior_belief$num_simulated_samples else 1,
                                    ...) {
-      if (is_null(private$initial_belief) || recalculate) {
-        stopifnot(is_null(prior_belief) || !prior_belief$is_simulated)
-        
-        private$observed_belief <- ProgramBelief$new(private$observed_draws, is_simulated = FALSE, prior_belief = prior_belief, hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, ...)
-      }
-      
-      return(private$observed_belief)
+      ObservedProgramBelief$new(self, private$observed_draws, prior_belief = prior_belief, hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, ...)
     },
     
     get_reward = function(treated) {
@@ -29,13 +28,17 @@ ProgramPeriod <- R6Class(
     
   active = list(
     params = function() private$period_params_data,
-    dataset = function() private$period_data
+    dataset = function() private$period_data,
+    period_index = function() private$program_period_index,
+    program = function() private$program_obj
   ),
     
   private = list(
     period_params_data = NULL,
     observed_draws = NULL,
-    observed_belief = NULL
+    previous_program_period = NULL,
+    program_period_index = NULL,
+    program_obj = NULL
   )
 )
 
@@ -53,7 +56,7 @@ Program <- R6Class(
         nest(study_params, params = !period),
         nest(study_data, data = !period),
         by = "period") %$% 
-        map2(params, data, ProgramPeriod$new)
+        accumulate2(params, data, function(prev_program, params, draws) ProgramPeriod$new(params, draws, self, if (is.R6(prev_program)) prev_program), .init = NA)[-1]
     }
   ),
   
@@ -68,7 +71,7 @@ Program <- R6Class(
   )
 )
 
-create_environment <- function(num_programs, num_periods, hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
+create_environment <- function(num_programs, num_periods, gen_hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
   model <- cmdstanr::cmdstan_model("sim_model.stan")
   
   sim_fit <- model$sample(
@@ -85,7 +88,7 @@ create_environment <- function(num_programs, num_periods, hyperparam, dataset_si
       y_control = array(dim = 0),
       y_treated = array(dim = 0),
     
-      !!!hyperparam
+      !!!gen_hyperparam
     ),
     iter_sampling = num_programs,
     chains = 1, 
@@ -94,7 +97,15 @@ create_environment <- function(num_programs, num_periods, hyperparam, dataset_si
   posterior::as_draws_df(sim_fit) %>% 
     rowwise() %>% 
     group_split() %>% 
-    map(Program$new) %>% 
+    # future_map(
+    map(
+      Program$new #hyperparam = inf_hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, 
+      # .options = furrr_options(
+      #   packages = c("magrittr", "tidyverse", "cmdstanr", "R6"),
+      #   globals = c("ProgramPeriod", "ProgramBelief"),
+      #   seed = TRUE
+      # )
+    ) %>% 
     Environment$new()
 }
 
@@ -108,11 +119,20 @@ Environment <- R6Class(
         transpose()
     },
     
-    get_initial_observed_belief = function(initial_action_set, hyperparam, num_simulated_future_datasets = 1) {
+    solve_online_pomdp = function(initial_action_set, discount, plan_depth, num_periods = NULL, ...) {
+      stopifnot(is_null(num_periods) || num_periods <= self$num_periods)
+      
+      reduce(seq((num_periods %||% self$num_periods) - 1), ~ {
+        .x$expand(discount = discount, depth = plan_depth)
+        .x$execute_best_action(.y + 1)
+      }, .init = self$get_initial_observed_belief(initial_action_set, ...))
+    }, 
+    
+    get_initial_observed_belief = function(initial_action_set, ...) {
       private$periods %>% 
-        first() %>% 
-        map(~ .x$get_observed_belief(hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets)) %>% 
-        BeliefNode$new(., NULL, initial_action_set)
+        first() %>%
+        map(function(program, ...) { program$get_observed_belief(prior_belief = NULL, ...) }, ...) %>% 
+        ObservedBeliefNode$new(., NULL, initial_action_set)
     }
   ),
   

@@ -2,42 +2,77 @@ Action <- R6Class(
   "Action",
 
   public = list(
-    initialize = function(last_action) {
+    initialize = function(implemented_program_indices, action_set, evaluated_program_indices = implemented_program_indices, last_action = NULL) {
+      private$implemented_program_indices <- implemented_program_indices
+      private$evaluated_program_indices <- evaluated_program_indices
       private$last_action <- last_action
-    },
+      private$parent_action_set <- action_set
+    }, 
     
     expand = function(belief, discount, depth) {
-      if (depth > 0) {
-        return(self$calculate_reward(belief) + discount * self$calculate_expected_simulated_future_value(belief, discount, depth))
-      } else {
-        self$calculate_reward_range(belief)["lower"]
-      }
+      private$action_value <- if (is_null(private$action_value)) {
+        if (depth > 0) {
+          return(self$calculate_reward(belief) + discount * self$calculate_expected_simulated_future_value(belief, discount, depth))
+        } else {
+          self$calculate_reward_range(belief)["lower"]
+        }
+      } else private$action_value
     },
     
-    calculate_reward = function(belief) stop("Not implemented."), 
-    calculate_reward_range = function(belief, width = 0.8) stop("Not implemented."), 
+    execute = function(belief, current_period, ...) {
+      stopifnot(!any(map_lgl(belief$program_beliefs, ~ .x$is_simulated)))
+      
+      updated_program_beliefs <- belief$program_beliefs
+      
+      if (!is_null(private$evaluated_program_indices)) {
+        updated_program_beliefs[private$evaluated_program_indices] %<>% 
+          map(function(program_belief, ...) program_belief$get_next_observed_belief(current_period, ...), ...)
+      }
+      
+      ObservedBeliefNode$new(updated_program_beliefs, belief, private$parent_action_set$get_next_action_set(self)) 
+    },
+    
+    calculate_reward = function(belief) belief$calculate_expected_reward(private$implemented_program_indices),
+    calculate_true_reward = function(observed_belief) observed_belief$calculate_true_reward(private$implemented_program_indices),
+    calculate_reward_range = function(belief, width = 0.8) belief$calculate_expected_reward_range(private$implemented_program_indices, width),
     
     calculate_expected_simulated_future_value = function(belief, discount, depth) { 
       belief$get_sampled_future_beliefs(self) %>%
-        # map_dbl(
-        future_map_dbl(
+        map_dbl(
+        # future_map_dbl(
           ~ .x$expand(discount, depth - 1),
-          .options = furrr_options(
-            packages = c("magrittr", "tidyverse", "furrr"),
-            seed = TRUE,
-            globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
-          )
+          # .options = furrr_options(
+          #   packages = c("magrittr", "tidyverse", "furrr"),
+          #   seed = TRUE,
+          #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
+          # )
         ) %>%
         mean()
+    }, 
+    
+    print_simple = function(belief = NULL) {
+      action_desc <- sprintf("[Impl: %s, Eval: %s]", str_c(private$implemented_program_indices, collapse = ", "), str_c(private$evaluated_program_indices, collapse = ", "))
+      
+      if (!is_null(belief)) {
+        sprintf("(%s, %.2f)", action_desc, self$calculate_reward(belief))
+      } else {
+        action_desc
+      } 
     } 
   ),
 
   active = list(
-    evaluated_programs = function() stop("Not implemented.")
+    evaluated_programs = function() private$evaluated_program_indices,
+    action_set = function() private$parent_action_set,
+    value = function() private$action_value
   ),
   
   private = list(
-    last_action = NULL
+    implemented_program_indices = NULL,
+    evaluated_program_indices = NULL,
+    last_action = NULL,
+    parent_action_set = NULL,
+    action_value = NULL
   )
 )
 
@@ -45,17 +80,14 @@ ActionSet <- R6Class(
   "ActionSet",
 
   public = list(
-    initialize = function(action_list) {
+    initialize = function(action_list, last_action = NULL) {
       private$action_list <- tibble(action = action_list) %>%
-        mutate(value = NULL)
+        mutate(value = -Inf)
     },
     
     expand = function(belief, discount, depth) {
       private$action_list %<>% 
-        mutate(
-          map_dfr(action, ~ .x$calculate_reward_range(belief)),
-          value = -Inf
-        ) %>% 
+        mutate(map_dfr(action, ~ .x$calculate_reward_range(belief))) %>% 
         arrange(desc(upper))
       
       # Real-Time Belief Space Search
@@ -77,33 +109,27 @@ ActionSet <- R6Class(
         private$action_list %<>% 
           mutate(value = lower)
       }
-        # mutate(
-        #   # value = future_map2_dbl(
-        #   value = map2_dbl(
-        #     action, lower, 
-        #     function(action, upper) {
-        #       action$expand(belief, discount, depth)
-        #     } 
-        #     # .options = furrr_options(
-        #     #   packages = c("magrittr", "tidyverse", "furrr"),
-        #     #   seed = TRUE,
-        #     #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
-        #   )
+      
       private$action_list %<>% 
         arrange(desc(value))
+      
+      private$expanded <- TRUE
        
       return(self$value)
     },
     
-    get_next_action_set = function(last_action) stop("Not implemented.") 
+    get_next_action_set = function(last_action) stop("Not implemented."),
+    
+    calculate_best_true_reward = function(belief) { map_dbl(private$action_list$action, ~ .x$calculate_true_reward(belief)) %>% max() }
   ),
 
   active = list(
-    value = function() first(private$action_list$value),
-    best_action = function() first(private$action_list$action)
+    value = function() if (private$expanded) first(private$action_list$value),
+    best_action = function() if (private$expanded) first(private$action_list$action)
   ),
 
   private = list(
+    expanded = FALSE,
     action_list = NULL
   )
 )
@@ -112,17 +138,17 @@ BeliefNode <- R6Class(
   "BeliefNode",
   
   public = list(
-    
-    initialize = function(current_program_beliefs, prior_belief, action_set) {
+    initialize = function(current_program_beliefs, prior_belief, action_set = NULL) {
       private$current_program_beliefs <- current_program_beliefs
-      private$prior_belief <- prior_belief
-      private$action_set <- action_set
+      private$prior_belief_obj <- prior_belief
+      private$action_set_obj <- action_set
+      private$belief_period <- if (!is_null(prior_belief)) prior_belief$period + 1 else 1
     
       stopifnot(all(!map_lgl(private$current_program_beliefs, is_null)))  
     },
     
     expand = function(discount, depth) {
-      private$action_set$expand(self, discount, depth)
+      private$action_set_obj$expand(self, discount, depth)
     },
     
     calculate_expected_reward = function(treated_programs) {
@@ -138,7 +164,6 @@ BeliefNode <- R6Class(
     },
     
     get_sampled_future_beliefs = function(action, ...) {
-      
       sampled_program_beliefs <- private$current_program_beliefs %>%
         imap(function(program_belief, program_index, evaluated_programs, num_sim, ...) {
           if (program_index %in% evaluated_programs) {
@@ -150,23 +175,73 @@ BeliefNode <- R6Class(
         transpose()
      
       sampled_program_beliefs %>% 
-        map(BeliefNode$new, prior_belief = self, action_set = private$action_set$get_next_action_set(action))
+        map(BeliefNode$new, prior_belief = self, action_set = private$action_set_obj$get_next_action_set(action))
     }
   ),
   
   active = list(
-    value = function() private$action_set$value,
+    action_set = function() private$action_set_obj,
+    value = function() self$action_set$value,
     program_beliefs = function() private$current_program_beliefs,
-    best_action = function() private$action_set$best_action
+    best_action = function() self$action_set$best_action,
+    period = function() private$belief_period,
+    prior_belief = function() private$prior_belief_obj
   ),
   
   private = list(
+    action_set_obj = NULL,
     current_program_beliefs = NULL,
-    prior_belief = NULL,
-    action_set = NULL
+    prior_belief_obj = NULL,
+    belief_period = 1
   )
 )
 
+ObservedBeliefNode <- R6Class(
+  "ObservedBeliefNode",
+  inherit = BeliefNode,
+
+  public = list(
+    execute_best_action = function(current_period, ...) {
+      self$best_action$execute(self, current_period, ...)
+    },
+   
+    calculate_true_reward = function(treated_programs) {
+      imap_dbl(
+        private$current_program_beliefs,
+        function(observed_program_belief, program_index) observed_program_belief$program_period$get_reward(program_index %in% treated_programs)
+      ) %>% 
+        sum()
+    },
+    
+    print_optimal_trajectory = function() {
+      if (!is_null(self$best_action)) {
+        if (is_null(self$prior_belief)) {
+          return(self$best_action$print_simple(self))
+        } else {
+          return(str_c(self$prior_belief$print_optimal_trajectory(), self$best_action$print_simple(self), sep = ", "))
+        }
+      }
+    }
+  ),
+  
+  active = list(
+    optimal_trajectory_data = function() {
+      if (is_null(self$prior_belief)) {
+        return(NULL)
+      } else {
+        node_optim_data <- lst(
+          action = list(self$prior_belief$best_action),
+          reward = self$prior_belief$best_action$calculate_reward(self$prior_belief),
+          value = self$prior_belief$action_set$value,
+          true_reward = self$prior_belief$best_action$calculate_true_reward(self),
+          best_true_reward = self$prior_belief$action_set$calculate_best_true_reward(self)
+        )
+        
+        return(bind_rows(self$prior_belief$optimal_trajectory_data, node_optim_data))
+      }
+    }
+  )
+)
 
 ProgramBelief <- R6Class(
   "ProgramBelief",
@@ -175,37 +250,30 @@ ProgramBelief <- R6Class(
     initialize = function(dataset_draws,
                           is_simulated = TRUE,
                           prior_belief = NULL, 
-                          hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("hyperparameters not specified"), 
+                          hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("Hyperparameters not specified."), 
                           num_simulated_future_datasets = 1,
                           ...) {
       private$is_simulated_belief <- is_simulated
       private$hyperparam_list <-  hyperparam
+      private$prior_belief_obj <- prior_belief
       
       private$belief_dataset <- private$get_dataset_from_draws(dataset_draws) %>% 
         list_modify(study_size = length(.$y_control))
       
       stopifnot(with(private$belief_dataset, length(y_control) == length(y_treated)))
       
-      private$prior_belief <- prior_belief
-      
-      retry <- FALSE
-      repeat {
-        belief_fit <- tryCatch(
-          private$fit_to_data(hyperparam, ...), 
-          error = function(err) { 
-            browser()
-            if (retry) {
-              stop(err)
-            } else {
-              retry <- TRUE
-            }
-          })
-        
-        if (!retry) break
-      }
-     
-      belief_draws <- posterior::as_draws_df(belief_fit) %>% 
-        ungroup()
+      belief_fit <- tryCatch(
+        private$fit_to_data(hyperparam, ...), 
+        error = function(err) { 
+          # Let's retry once...
+          private$fit_to_data(hyperparam, ...) 
+        })
+    
+      belief_draws <- tryCatch(
+        posterior::as_draws_df(belief_fit) %>% 
+          ungroup(),
+        error = function(err) browser()
+      )
       
       private$calculate_reward_param(belief_draws)
       private$save_simulated_future_draws(belief_draws, num_simulated_future_datasets) 
@@ -242,13 +310,14 @@ ProgramBelief <- R6Class(
   
   active = list(
     hyperparam = function() private$hyperparam_list,
-    num_studies = function() if (is_null(private$prior_belief)) 1 else private$prior_belief$num_studies + 1,
+    num_studies = function() if (is_null(private$prior_belief_obj)) 1 else private$prior_belief_obj$num_studies + 1,
     num_simulated_samples = function() nrow(private$simulated_future_draws),
     is_simulated = function() private$is_simulated_belief,
+    prior_belief = function() private$prior_belief_obj,
     
     all_data = function() {
-      if (!is_null(private$prior_belief)) {
-        list_merge(private$prior_belief$all_data, !!!private$belief_dataset) %>% 
+      if (!is_null(private$prior_belief_obj)) {
+        list_merge(private$prior_belief_obj$all_data, !!!private$belief_dataset) %>% 
           list_modify(n_study = .$n_study + 1)
       } else {
         list_modify(private$belief_dataset, n_study = 1)
@@ -259,12 +328,12 @@ ProgramBelief <- R6Class(
   private = list(
     hyperparam_list = NULL,
     belief_dataset = NULL,
-    prior_belief = NULL,
+    prior_belief_obj = NULL,
     simulated_future_draws = NULL,
     is_simulated_belief = TRUE,
     reward_param_mean = NULL,
     
-    fit_to_data = function(hyperparam, generate_dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), iter_warmup = 500, iter_sampling = iter_warmup) {
+    fit_to_data = function(hyperparam, generate_dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), iter_warmup = 500, iter_sampling = iter_warmup, ...) {
       model <- cmdstanr::cmdstan_model("sim_model.stan")
       stan_data <- lst(
         fit = TRUE,
@@ -276,11 +345,11 @@ ProgramBelief <- R6Class(
         !!!hyperparam
       )
       
-      # if (self$is_simulated) {
       #   model$variational(data = stan_data)
-      # } else {
-      model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4, max_treedepth = 12, refresh = 0, show_messages = FALSE)
-      # }
+      tryCatch(
+        model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4, max_treedepth = 12, refresh = 0, show_messages = FALSE, ...),
+        error = function(err) browser()
+      )
     },
     
     get_dataset_from_draws = function(draws) {
@@ -308,5 +377,30 @@ ProgramBelief <- R6Class(
       
       invisible(private$simulated_future_draws)
     }
+  )
+)
+
+ObservedProgramBelief <- R6Class(
+  "ObservedProgramBelief",
+  inherit = ProgramBelief,
+
+  public = list(
+    initialize = function(program_period, dataset_draws, ...) {
+      super$initialize(dataset_draws, is_simulated = FALSE, ...)
+      private$program_period_obj <- program_period
+    }, 
+    
+    get_next_observed_belief = function(current_period, ...) {
+      stopifnot(current_period > private$program_period_obj$period_index)
+      private$program_period_obj$program$periods[[current_period]]$get_observed_belief(prior_belief = self, ...)
+    }
+  ),
+
+  active = list(
+    program_period = function() private$program_period_obj
+  ),
+
+  private = list(
+    program_period_obj = NULL
   )
 )
