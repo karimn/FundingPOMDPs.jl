@@ -51,7 +51,7 @@ Action <- R6Class(
     }, 
     
     print_simple = function(belief = NULL) {
-      action_desc <- sprintf("[Impl: %s, Eval: %s]", str_c(private$implemented_program_indices, collapse = ", "), str_c(private$evaluated_program_indices, collapse = ", "))
+      action_desc <- sprintf("[Impl: {%s}, Eval: {%s}]", str_c(private$implemented_program_indices, collapse = ", "), str_c(private$evaluated_program_indices, collapse = ", "))
       
       if (!is_null(belief)) {
         sprintf("(%s, %.2f)", action_desc, self$calculate_reward(belief))
@@ -214,12 +214,10 @@ ObservedBeliefNode <- R6Class(
     },
     
     print_optimal_trajectory = function() {
-      if (!is_null(self$best_action)) {
-        if (is_null(self$prior_belief)) {
-          return(self$best_action$print_simple(self))
-        } else {
-          return(str_c(self$prior_belief$print_optimal_trajectory(), self$best_action$print_simple(self), sep = ", "))
-        }
+      if (is_null(self$prior_belief)) {
+        return(self$best_action$print_simple(self))
+      } else {
+        return(str_c(self$prior_belief$print_optimal_trajectory(), if (!is_null(self$best_action)) self$best_action$print_simple(self), sep = ", "))
       }
     }
   ),
