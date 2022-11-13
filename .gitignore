@@ -4,3 +4,7 @@
 .Ruserdata
 
 /.quarto/
+
+funding-portfolio_files/
+
+renv/
