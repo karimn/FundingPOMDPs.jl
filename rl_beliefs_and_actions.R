@@ -38,14 +38,14 @@ Action <- R6Class(
     
     calculate_expected_simulated_future_value = function(belief, discount, depth) { 
       belief$get_sampled_future_beliefs(self) %>%
-        map_dbl(
-        # future_map_dbl(
+        # map_dbl(
+        future_map_dbl(
           ~ .x$expand(discount, depth - 1),
-          # .options = furrr_options(
-          #   packages = c("magrittr", "tidyverse", "furrr"),
-          #   seed = TRUE,
-          #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
-          # )
+          .options = furrr_options(
+            packages = c("magrittr", "tidyverse", "furrr"),
+            seed = TRUE,
+            globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
+          )
         ) %>%
         mean()
     }, 
@@ -279,13 +279,11 @@ ProgramBelief <- R6Class(
       private$save_simulated_future_draws(belief_draws, num_simulated_future_datasets) 
     },
     
-    calculate_expected_reward = function(treated) {
-      with(slice(private$reward_param_mean, 1), mu_study + treated * tau_study) 
-    },
+    calculate_expected_reward = function(treated) with(slice(private$reward_param_mean, 1), new_mu_study + treated * new_tau_study), 
     
     calculate_expected_reward_range = function(treated, width = 0.8) {
       filter(private$reward_param_mean, .width == width) %>% 
-        with(c(lower = mu_study.lower + treated * tau_study.lower, upper = mu_study.upper + treated * tau_study.upper)) 
+        with(c(lower = new_mu_study.lower + treated * new_tau_study.lower, upper = new_mu_study.upper + treated * new_tau_study.upper)) 
     },
     
     get_simulated_beliefs = function(num, hyperparam = NULL, ...) {
@@ -375,9 +373,10 @@ ProgramBelief <- R6Class(
     
     calculate_reward_param = function(draws) {
       private$reward_param_mean <- draws %>% 
-        tidybayes::spread_draws(mu_study[period], tau_study[period]) %>% 
+        # tidybayes::spread_draws(mu_study[period], tau_study[period]) %>% 
+        tidybayes::spread_draws(new_mu_study, new_tau_study) %>% 
         ungroup() %>% 
-        filter(period == self$num_studies) %>% 
+        # filter(period == self$num_studies) %>% 
         tidybayes::mean_qi(.width = c(0.8)) 
       
       invisible(private$reward_param_mean)

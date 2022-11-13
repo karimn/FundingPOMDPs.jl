@@ -65,12 +65,16 @@ model {
 generated quantities {
   array[sim ? (sim_forward ? 1 : n_study) : 0] vector[n_control_sim] y_control_sim;
   array[sim ? (sim_forward ? 1 : n_study) : 0] vector[n_treated_sim] y_treated_sim;
-
+  
+  real new_mu_study = 0; 
+  real new_tau_study = 0;
+  real<lower = 0> new_sigma_study = 0; 
+  
   if (sim) {
     if (sim_forward) {
-      real new_mu_study = normal_rng(mu_toplevel, eta_toplevel[1]);
-      real new_tau_study = normal_rng(tau_toplevel, eta_toplevel[2]);
-      real new_sigma_study = sigma_toplevel * exp(normal_rng(0, eta_toplevel[3]));
+      new_mu_study = normal_rng(mu_toplevel, eta_toplevel[1]);
+      new_tau_study = normal_rng(tau_toplevel, eta_toplevel[2]);
+      new_sigma_study = sigma_toplevel * exp(normal_rng(0, eta_toplevel[3]));
       
       y_control_sim[1] = to_vector(lognormal_rng(rep_vector(new_mu_study, n_control_sim), rep_vector(new_sigma_study, n_control_sim)));
       y_treated_sim[1] = to_vector(lognormal_rng(rep_vector(new_mu_study + new_tau_study, n_treated_sim), rep_vector(new_sigma_study, n_treated_sim)));
