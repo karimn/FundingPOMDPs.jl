@@ -39,10 +39,10 @@
     },
     "Matrix": {
       "Package": "Matrix",
-      "Version": "1.5-1",
+      "Version": "1.5-3",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "539dc0c0c05636812f1080f473d2c177",
+      "Hash": "4006dffe49958d2dd591c17e61e60591",
       "Requirements": [
         "lattice"
       ]
@@ -692,18 +692,6 @@
         "rlang"
       ]
     },
-    "htmlwidgets": {
-      "Package": "htmlwidgets",
-      "Version": "1.5.4",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "76147821cd3fcd8c4b04e1ef0498e7fb",
-      "Requirements": [
-        "htmltools",
-        "jsonlite",
-        "yaml"
-      ]
-    },
     "httr": {
       "Package": "httr",
       "Version": "1.4.4",
@@ -864,10 +852,10 @@
     },
     "modelr": {
       "Package": "modelr",
-      "Version": "0.1.9",
+      "Version": "0.1.10",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "ce70fef14a09fd1cab1f3792a0e210c1",
+      "Hash": "bc23cda9c6a8f91dc1c10e1994494711",
       "Requirements": [
         "broom",
         "magrittr",
@@ -986,17 +974,6 @@
         "ps"
       ]
     },
-    "profvis": {
-      "Package": "profvis",
-      "Version": "0.3.7",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "e9d21e79848e02e524bea6f5bd53e7e4",
-      "Requirements": [
-        "htmlwidgets",
-        "stringr"
-      ]
-    },
     "progress": {
       "Package": "progress",
       "Version": "1.2.2",
@@ -1090,10 +1067,10 @@
     },
     "renv": {
       "Package": "renv",
-      "Version": "0.15.5",
+      "Version": "0.16.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "6a38294e7d12f5d8e656b08c5bd8ae34",
+      "Hash": "c9e8442ab69bc21c9697ecf856c1e6c7",
       "Requirements": []
     },
     "reprex": {
@@ -1126,10 +1103,10 @@
     },
     "rmarkdown": {
       "Package": "rmarkdown",
-      "Version": "2.17",
+      "Version": "2.18",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "e97c8be593e010f93520e8215c0f9189",
+      "Hash": "8063c4e953cefb651e8cd58c82c82d2d",
       "Requirements": [
         "bslib",
         "evaluate",
