@@ -250,10 +250,12 @@ ProgramBelief <- R6Class(
                           prior_belief = NULL, 
                           hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("Hyperparameters not specified."), 
                           num_simulated_future_datasets = 1,
+                          stan_model = if (!is_null(prior_belief)) prior_belief$stan_model else stop("Stan model not specified."), 
                           ...) {
       private$is_simulated_belief <- is_simulated
       private$hyperparam_list <-  hyperparam
       private$prior_belief_obj <- prior_belief
+      private$stan_model_obj <- stan_model
       
       private$belief_dataset <- private$get_dataset_from_draws(dataset_draws) %>% 
         list_modify(study_size = length(.$y_control))
@@ -289,20 +291,28 @@ ProgramBelief <- R6Class(
     get_simulated_beliefs = function(num, hyperparam = NULL, ...) {
       hyperparam <- hyperparam %||% self$hyperparam 
       
-      private$simulated_future_draws %>% 
-        sample_n(num) %$%  
-        future_map(
-        # map(
-          sim_draws, ProgramBelief$new, 
-          is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
-          # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
-          num_simulated_future_datasets = 1,
-          .options = furrr_options(packages = c("magrittr", "tidyverse"), seed = TRUE)
-            # .options = furrr_options(
-            #   packages = c("magrittr", "tidyverse", "furrr"),
-            #   seed = TRUE,
-            #   globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "KBanditAction", "Action")
-          ) 
+      new_beliefs <- if (num > 1) {
+        private$simulated_future_draws %>% 
+          sample_n(num) %$%
+          future_map(
+            sim_draws, ProgramBelief$new, 
+            is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
+            # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+            num_simulated_future_datasets = 1,
+            .options = furrr_options(packages = c("magrittr", "tidyverse"), seed = TRUE)
+          )
+      } else {
+        private$simulated_future_draws %>% 
+          sample_n(num) %$%
+          map(
+            sim_draws, ProgramBelief$new, 
+            is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
+            # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+            num_simulated_future_datasets = 1
+          )
+      }
+      
+      return(new_beliefs)
     }
  ),
   
@@ -312,6 +322,7 @@ ProgramBelief <- R6Class(
     num_simulated_samples = function() nrow(private$simulated_future_draws),
     is_simulated = function() private$is_simulated_belief,
     prior_belief = function() private$prior_belief_obj,
+    stan_model = function() private$stan_model_obj,
     
     all_data = function() {
       if (!is_null(private$prior_belief_obj)) {
@@ -330,9 +341,9 @@ ProgramBelief <- R6Class(
     simulated_future_draws = NULL,
     is_simulated_belief = TRUE,
     reward_param_mean = NULL,
+    stan_model_obj = NULL,
     
     fit_to_data = function(hyperparam, generate_dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), iter_warmup = 500, iter_sampling = iter_warmup, ...) {
-      model <- cmdstanr::cmdstan_model("sim_model.stan")
       stan_data <- lst(
         fit = TRUE,
         sim = TRUE,
@@ -341,11 +352,16 @@ ProgramBelief <- R6Class(
         !!!generate_dataset_size,
         !!!self$all_data,
         !!!hyperparam
-      )
+      ) %>% 
+        list_modify(study_size = as.array(.$study_size))
       
       #   model$variational(data = stan_data)
       tryCatch(
-        model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4, max_treedepth = 12, refresh = 0, show_messages = FALSE, ...),
+        # model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4, max_treedepth = 12, refresh = 0, show_messages = FALSE, ...),
+        rstan::sampling(self$stan_model, data = stan_data, 
+                        warmup = iter_warmup, iter = iter_warmup + iter_sampling, chains = 4, cores = 4, 
+                        control = lst(max_treedepth = 12), 
+                        refresh = 0, show_messages = TRUE, open_progress = FALSE, ...),
         error = function(err) browser()
       )
     },

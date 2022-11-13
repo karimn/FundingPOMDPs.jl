@@ -15,10 +15,11 @@ ProgramPeriod <- R6Class(
     },
     
     get_observed_belief = function(prior_belief = NULL,
-                                   hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("hyperparameters not specified"),
+                                   hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("Hyperparameters not specified."),
                                    num_simulated_future_datasets = if (!is_null(prior_belief)) prior_belief$num_simulated_samples else 1,
+                                   stan_model = if (!is_null(prior_belief)) prior_belief$stan_model else stop("Stan model not specified."),
                                    ...) {
-      ObservedProgramBelief$new(self, private$observed_draws, prior_belief = prior_belief, hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, ...)
+      ObservedProgramBelief$new(self, private$observed_draws, prior_belief = prior_belief, hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, stan_model = stan_model, ...)
     },
     
     get_reward = function(treated) {
@@ -71,41 +72,31 @@ Program <- R6Class(
   )
 )
 
-create_environment <- function(num_programs, num_periods, gen_hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
-  model <- cmdstanr::cmdstan_model("sim_model.stan")
-  
-  sim_fit <- model$sample(
-    data = lst(
-      fit = FALSE,
-      sim = TRUE,
-      sim_forward = FALSE,
-      
-      !!!dataset_size,
-      
-      n_study = num_periods,
-      study_size = rep(0, n_study),
-      
-      y_control = array(dim = 0),
-      y_treated = array(dim = 0),
+create_environment <- function(num_programs, num_periods, env_stan_model, env_hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
+  stan_data <- lst(
+    fit = FALSE,
+    sim = TRUE,
+    sim_forward = FALSE,
     
-      !!!gen_hyperparam
-    ),
-    iter_sampling = num_programs,
-    chains = 1, 
+    !!!dataset_size,
+    
+    n_study = num_periods,
+    study_size = rep(0, n_study),
+    
+    y_control = array(dim = 0),
+    y_treated = array(dim = 0),
+  
+    !!!env_hyperparam
   )
+  
+  sim_fit <- env_stan_model %>%
+    rstan::sampling(data = stan_data, iter = 1000 + num_programs, warmup = 1000, chains = 1)
+  # sim_fit <- model$sample(data = stan_data, iter_sampling = num_programs, chains = 1)
   
   posterior::as_draws_df(sim_fit) %>% 
     rowwise() %>% 
     group_split() %>% 
-    # future_map(
-    map(
-      Program$new #hyperparam = inf_hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, 
-      # .options = furrr_options(
-      #   packages = c("magrittr", "tidyverse", "cmdstanr", "R6"),
-      #   globals = c("ProgramPeriod", "ProgramBelief"),
-      #   seed = TRUE
-      # )
-    ) %>% 
+    map(Program$new) %>% 
     Environment$new()
 }
 
