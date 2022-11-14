@@ -88,6 +88,10 @@ ActionSet <- R6Class(
     expand = function(belief, discount, depth) {
       private$action_list %<>% 
         mutate(map_dfr(action, ~ .x$calculate_reward_range(belief))) %>% 
+        # rename(lower_reward = lower) %>% 
+        mutate(
+          upper = upper + max(upper) * discount * (1 - discount^depth) / (1 - discount),
+        ) %>%
         arrange(desc(upper))
       
       # Real-Time Belief Space Search
