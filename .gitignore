@@ -8,3 +8,13 @@
 funding-portfolio_files/
 
 renv/
+
+temp/
+
+.Rprofile
+
+_quarto.yml
+
+*.html
+
+*.pdf
