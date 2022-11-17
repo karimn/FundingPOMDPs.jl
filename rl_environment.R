@@ -114,7 +114,9 @@ Environment <- R6Class(
       stopifnot(is_null(num_periods) || num_periods <= self$num_periods)
       
       reduce(seq((num_periods %||% self$num_periods) - 1), ~ {
+        cat(sprintf("[Period %d]\n", .y))
         .x$expand(discount = discount, depth = plan_depth)
+        cat(sprintf("[Period %d] Executing Action %s\n", .y, .x$best_action$print_simple()))
         .x$execute_best_action(.y + 1)
       }, .init = self$get_initial_observed_belief(initial_action_set, ...))
     }, 
