@@ -13,6 +13,9 @@ stan_model <- rstan::stan_model("sim_model.stan")
 source("rl_environment.R")
 source("rl_beliefs_and_actions.R")
 
+utility <- function(outcome, alpha = 1.5) 1 - exp(- alpha * outcome)
+expected_utility <- function(outcome_mean, outcome_sd, alpha = 1.5) 1 - exp(- alpha * outcome_mean + alpha^2 * outcome_sd^2 / 2)
+
 KBanditActionSet <- R6Class(
   "KBanditActionSet", 
   inherit = ActionSet,
@@ -45,7 +48,7 @@ KBanditActionSet <- R6Class(
 
 # Solve -------------------------------------------------------------------
 
-num_sim <- 10
+num_sim <- 6
 
 testenv <- map(seq(num_sim), ~ { 
   create_environment(
@@ -53,32 +56,28 @@ testenv <- map(seq(num_sim), ~ {
     num_periods = 10, 
     env_stan_model = stan_model,
     env_hyperparam = lst(
-      mu_sd = 2,
+      mu_sd = 1,
       tau_mean = 0.1,
-      tau_sd = 1,
-      sigma_sd = 2,
+      tau_sd = 0.25,
+      sigma_sd = 1,
       # eta_sd = c(1, 2, 1),
-      eta_sd = c(0.1, 0.2, 0.1),
-    ) 
+      eta_sd = c(0.1, 0.1, 0.1)
+    ),
+    expected_utility_fun = expected_utility
   )
-}, .options = furrr_options(
-  seed = TRUE, 
-  packages = c("magrittr", "tidyverse", "rstan"),
-  globals = c("create_environment", "ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "Action")
-  )
-)
+})
 
 testenv %>% map(~ .x$programs) %>% imap_dfr(~ map_dfr(.x, ~ .x$toplevel_params), .id = "sim_id")
 
 infer_hyperparam = lst(
-  mu_sd = 2.5,
-  tau_mean = 0.1,
-  tau_sd = 1.5,
-  sigma_sd = 2.5,
-  eta_sd = c(0.2, 0.4, 0.2),
+  mu_sd = 2,
+  tau_mean = 0.05,
+  tau_sd = 0.5,
+  sigma_sd = 1.5,
+  eta_sd = c(0.2, 0.2, 0.2),
 )
 
-run_rl_sim <- function(env, sim_id, depth) {
+run_rl_sim <- function(env, sim_id, depth, discount = 0.95) {
   plan(multisession, workers = 12)
   
   cat(sprintf("Simulation %d\n", sim_id))
@@ -88,9 +87,9 @@ run_rl_sim <- function(env, sim_id, depth) {
         KBanditActionSet$new() %>% 
         env$solve_online_pomdp(
           hyperparam = infer_hyperparam, 
-          num_simulated_future_datasets = 20, 
+          num_simulated_future_datasets = 100, 
           stan_model = stan_model,
-          discount = 0.9, 
+          discount = discount, 
           plan_depth = depth,
           iter_warmup = 1000
         )
@@ -101,7 +100,6 @@ run_rl_sim <- function(env, sim_id, depth) {
 }
 
 system.time(top_belief_node <- testenv %>% imap(run_rl_sim, depth = 2))
-system.time(test <- testenv[9:10] %>% imap(run_rl_sim, depth = 2))
 
 system.time(top_myopic_belief_node <- testenv %>% imap(run_rl_sim, depth = 0))
 
@@ -113,18 +111,25 @@ top_belief_node %>%
   compact() %>% 
   map(~ .x$print_optimal_trajectory())
 
-top_belief_node %>% 
+top_belief_node2 %>% 
   compact() %>% 
   map(~ .x$optimal_trajectory_data) %>% 
-  map(mutate, action_id = map_int(action, ~ .x$implemented_programs))
+  map(mutate, 
+      action_id = map_int(action, ~ .x$implemented_programs),
+      best_action_id = map_int(best_action, ~ .x$implemented_programs))
 
 top_myopic_belief_node %>% 
   compact() %>% 
   map(~ .x$print_optimal_trajectory())
 
-top_myopic_belief_node$optimal_trajectory_data
+top_myopic_belief_node2 %>% 
+  compact() %>% 
+  map(~ .x$optimal_trajectory_data) %>% 
+  map(mutate, 
+      action_id = map_int(action, ~ .x$implemented_programs),
+      best_action_id = map_int(best_action, ~ .x$implemented_programs))
 
-top_belief_node[[9]]$all_periods_reward_param %>% 
+top_belief_node[[3]]$all_periods_reward_param %>% 
   ggplot() +
   geom_pointrange(
     aes(
@@ -134,20 +139,30 @@ top_belief_node[[9]]$all_periods_reward_param %>%
   facet_wrap(vars(period_id), nrow = 1) +
   theme_minimal()
 
-top_belief_node[[9]]$all_periods_reward_param %>% 
+top_myopic_belief_node2[[1]]$all_periods_reward_param %>% 
   ggplot() +
-  geom_pointrange(
+  geom_point(
     aes(
-      x = program_id, y = new_mu_study, ymin = new_mu_study.lower, ymax = new_mu_study.upper,
+      x = program_id, 
+      y = eu_control, 
       color = "Control"
     )
   ) +
-  geom_pointrange(
-    aes(
-      x = program_id, y = new_mu_study + new_tau_study, ymin = new_mu_study.lower + new_tau_study.lower, ymax = new_mu_study.upper + new_tau_study.upper,
-      color = "Treated"
-    )
-  ) +
+  # geom_pointrange(
+  #   aes(
+  #     x = program_id, 
+  #     y = expected_utility(new_mu_study, new_sigma_study), 
+  #     ymin = expected_utility(new_mu_study.lower, new_sigma_study.lower), 
+  #     ymax = expected_utility(new_mu_study.upper, new_sigma_study.upper),
+  #     color = "Control"
+  #   )
+  # ) +
+  # geom_pointrange(
+  #   aes(
+  #     x = program_id, y = new_mu_study + new_tau_study, ymin = new_mu_study.lower + new_tau_study.lower, ymax = new_mu_study.upper + new_tau_study.upper,
+  #     color = "Treated"
+  #   )
+  # ) +
   facet_wrap(vars(period_id), nrow = 1) +
   theme_minimal()
 
