@@ -6,12 +6,14 @@ ProgramPeriod <- R6Class(
     initialize = function(params, 
                           draws,
                           program,
-                          previous_program_period = NULL) {
+                          previous_program_period = NULL,
+                          expected_utility_fun = if (!is_null(previous_program_period)) previous_program_period$expected_utility_fun else stop("Missing EU function.")) {
       private$period_params_data <- params
       private$observed_draws <- draws 
       private$program_obj <- program
       private$previous_program_period <- previous_program_period 
       private$program_period_index <- if (is_null(previous_program_period)) 1 else previous_program_period$period_index + 1
+      private$expected_util_fun <- expected_utility_fun
     },
     
     get_observed_belief = function(prior_belief = NULL,
@@ -19,11 +21,16 @@ ProgramPeriod <- R6Class(
                                    num_simulated_future_datasets = if (!is_null(prior_belief)) prior_belief$num_simulated_samples else 1,
                                    stan_model = if (!is_null(prior_belief)) prior_belief$stan_model else stop("Stan model not specified."),
                                    ...) {
-      ObservedProgramBelief$new(self, private$observed_draws, prior_belief = prior_belief, hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, stan_model = stan_model, ...)
+      ObservedProgramBelief$new(
+        self, private$observed_draws, prior_belief = prior_belief, hyperparam = hyperparam, num_simulated_future_datasets = num_simulated_future_datasets, 
+        expected_utility_fun = private$expected_util_fun,
+        stan_model = stan_model, ...
+      )
     },
     
     get_reward = function(treated) {
-      with(private$period_params_data, mu_study + treated * tau_study)
+      # with(private$period_params_data, mu_study + treated * tau_study)
+      with(private$period_params_data, private$expected_util_fun(mu_study + treated * tau_study, sigma_study))
     } 
   ),
     
@@ -31,7 +38,8 @@ ProgramPeriod <- R6Class(
     params = function() private$period_params_data,
     dataset = function() private$period_data,
     period_index = function() private$program_period_index,
-    program = function() private$program_obj
+    program = function() private$program_obj,
+    expected_utility_fun = function() private$expected_util_fun
   ),
     
   private = list(
@@ -39,7 +47,8 @@ ProgramPeriod <- R6Class(
     observed_draws = NULL,
     previous_program_period = NULL,
     program_period_index = NULL,
-    program_obj = NULL
+    program_obj = NULL,
+    expected_util_fun = NULL
   )
 )
 
@@ -47,7 +56,7 @@ Program <- R6Class(
   "Program",
   
   public = list(
-    initialize = function(program_draw) {
+    initialize = function(program_draw, expected_utility_fun) {
       private$toplevel_params_data <- tidybayes::spread_draws(program_draw, `.*toplevel`, regex = TRUE)
       
       study_params <- tidybayes::spread_draws(program_draw, mu_study[period], tau_study[period], sigma_study[period])
@@ -57,7 +66,11 @@ Program <- R6Class(
         nest(study_params, params = !period),
         nest(study_data, data = !period),
         by = "period") %$% 
-        accumulate2(params, data, function(prev_program, params, draws) ProgramPeriod$new(params, draws, self, if (is.R6(prev_program)) prev_program), .init = NA)[-1]
+        accumulate2(
+          params, data, 
+          function(prev_program, params, draws) ProgramPeriod$new(params, draws, self, if (is.R6(prev_program)) prev_program, 
+                                                                  expected_utility_fun = expected_utility_fun), .init = NA
+        )[-1]
     }
   ),
   
@@ -72,7 +85,7 @@ Program <- R6Class(
   )
 )
 
-create_environment <- function(num_programs, num_periods, env_stan_model, env_hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50)) {
+create_environment <- function(num_programs, num_periods, env_stan_model, env_hyperparam, dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), expected_utility_fun) {
   stan_data <- lst(
     fit = FALSE,
     sim = TRUE,
@@ -96,7 +109,7 @@ create_environment <- function(num_programs, num_periods, env_stan_model, env_hy
   posterior::as_draws_df(sim_fit) %>% 
     rowwise() %>% 
     group_split() %>% 
-    map(Program$new) %>% 
+    map(Program$new, expected_utility_fun = expected_utility_fun) %>% 
     Environment$new()
 }
 
