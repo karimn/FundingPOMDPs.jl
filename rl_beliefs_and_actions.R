@@ -93,9 +93,9 @@ ActionSet <- R6Class(
     
     expand = function(belief, discount, depth) {
       private$action_list %<>% 
-        mutate(map_dfr(action, ~ { .x$calculate_reward_range(belief) })) %>%
+        # mutate(map_dfr(action, ~ { .x$calculate_reward_range(belief) })) %>%
         mutate(
-          old_upper = upper + max(upper) * discount * (1 - discount^depth) / (1 - discount),
+          # old_upper = upper + max(upper) * discount * (1 - discount^depth) / (1 - discount),
           
           # FIB offline upper-bound calculation
           # upper = map_dbl(action, ~ .x$calculate_reward(belief)) + (discount / (1 - discount)) * self$calculate_mean_max_reward(belief)  
@@ -109,11 +109,14 @@ ActionSet <- R6Class(
         num_actions <- nrow(private$action_list) 
         action_index <- 1
         highest_lb <- -Inf
+      
+        # cat(sprintf("[Depth = %d] Building simulated beliefs...", depth))
+        # cat(sprintf("%d/%d built.\n", sum(map_lgl(belief$program_beliefs, ~ .x$build_simulated_beliefs())), length(belief$program_beliefs)))
        
         while(action_index <= num_actions && private$action_list$upper[action_index] >= highest_lb)  {
           curr_action <- private$action_list$action[[action_index]]
           
-          cat(sprintf("[Depth = %d] Expanding (%d) %s\n", depth, action_index, curr_action$print_simple()))
+          # cat(sprintf("[Depth = %d] Expanding (%d) %s\n", depth, action_index, curr_action$print_simple()))
           
           current_value <- curr_action$expand(belief, discount, depth)
           private$action_list$value[action_index] <- current_value
@@ -316,11 +319,13 @@ ProgramBelief <- R6Class(
                           hyperparam = if (!is_null(prior_belief)) prior_belief$hyperparam else stop("Hyperparameters not specified."), 
                           num_simulated_future_datasets = 1,
                           stan_model = if (!is_null(prior_belief)) prior_belief$stan_model else stop("Stan model not specified."), 
+                          expected_utility_fun = if (!is_null(prior_belief)) prior_belief$expected_utility_fun else stop("EU function not specified."),  
                           ...) {
       private$is_simulated_belief <- is_simulated
       private$hyperparam_list <-  hyperparam
       private$prior_belief_obj <- prior_belief
       private$stan_model_obj <- stan_model
+      private$expected_util_fun <- expected_utility_fun
       
       private$belief_dataset <- private$get_dataset_from_draws(dataset_draws) %>% 
         list_modify(study_size = length(.$y_control))
@@ -332,58 +337,88 @@ ProgramBelief <- R6Class(
       all_draws <- posterior::as_draws_df(belief_fit)
     
       private$belief_draws <- all_draws %>% 
-        tidybayes::spread_draws(new_mu_study, new_tau_study) %>% 
-        ungroup() 
+        tidybayes::spread_draws(new_mu_study, new_tau_study, new_sigma_study) %>% 
+        ungroup() %>% 
+        mutate(
+          eu_control = expected_utility_fun(new_mu_study, new_sigma_study),
+          eu_treated = expected_utility_fun(new_mu_study + new_tau_study, new_sigma_study)
+        )
       
       private$simulated_future_draws <- all_draws %>% 
-        sample_n(num_simulated_future_datasets) %>% 
+        sample_n(max(500, num_simulated_future_datasets)) %>% 
         tidybayes::spread_draws(y_control_sim[period, obs_index], y_treated_sim[period, obs_index]) %>% 
         nest(sim_draws = c(period, obs_index, matches("y_(control|treated)_sim"))) 
       
       private$calculate_reward_param()
     },
     
-    calculate_expected_reward = function(treated) with(slice(private$reward_param_mean, 1), new_mu_study + treated * new_tau_study), 
+    calculate_expected_reward = function(treated) with(slice(private$reward_param_mean, 1), if (treated) eu_treated else eu_control), 
     
-    calculate_state_rewards = function(treated) with(private$belief_draws, new_mu_study + treated * new_tau_study), 
+    calculate_state_rewards = function(treated) with(private$belief_draws, if (treated) eu_treated else eu_control),
     
     calculate_expected_reward_range = function(treated, width = 0.8) {
-      filter(private$reward_param_mean, .width == width) %>% 
-        with(c(lower = new_mu_study.lower + treated * new_tau_study.lower, upper = new_mu_study.upper + treated * new_tau_study.upper)) 
+      filter(private$reward_param_mean, .width == width) %>%
+        with(c(lower = if (treated) eu_treated.lower else eu_control.lower,
+               upper = if (treated) eu_treated.upper else eu_control.upper))
     },
     
-    get_simulated_beliefs = function(num, hyperparam = NULL, ...) {
-      hyperparam <- hyperparam %||% self$hyperparam 
+    get_simulated_beliefs = function(num, ...) {
+      # self$build_simulated_beliefs()
       
-      new_beliefs <- if (num > 1) {
-        private$simulated_future_draws %>% 
-          sample_n(num) %$%
-          future_map(
-            # BUG every so often I get an exception because of Stan fit with no samples. Not sure why.
-            sim_draws, function(draws, ...) tryCatch(ProgramBelief$new(draws, ...), error = function(err) NULL), 
-            is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
-            # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
-            num_simulated_future_datasets = 1,
-            .options = furrr_options(
-              packages = c("magrittr", "tidyverse"), 
-              seed = TRUE,
-              globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "Action")
-            ),
-            .progress = FALSE 
-          ) %>% 
-          compact()
-      } else {
-        private$simulated_future_draws %>% 
-          sample_n(num) %$%
-          map(
-            sim_draws, ProgramBelief$new, 
-            is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
-            # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
-            num_simulated_future_datasets = 1
-          )
-      }
+      #   private$simulated_future_draws %<>% 
+      #     mutate(
+      #       simulated_belief = future_map(
+      #         sim_draws, 
+      #         function(draws, ...) tryCatch(ProgramBelief$new(draws, expected_utility_fun = private$expected_util_fun, ...), error = function(err) NULL), 
+      #         is_simulated = TRUE, prior_belief = self, hyperparam = hyperparam, 
+      #         # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+      #         num_simulated_future_datasets = 1,
+      #         .options = furrr_options(
+      #           packages = c("magrittr", "tidyverse"), 
+      #           seed = TRUE,
+      #           globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "Action")
+      #         )
+      #       )
+      #     )
+      # } 
       
-      return(new_beliefs)
+      # new_beliefs <- private$simulated_future_draws %>% 
+      #   filter(!map_lgl(simulated_belief, is_null)) %>% 
+      #   sample_n(num) %>% 
+      #   pull(simulated_belief)
+      
+      private$build_simulated_beliefs(num, ...)
+      
+      # new_beliefs <- if (num > 1) {
+      #   private$simulated_future_draws %>%
+      #     sample_n(num) %$%
+      #     future_map(
+      #       # BUG every so often I get an exception because of Stan fit with no samples. Not sure why.
+      #       sim_draws, function(draws, ...) tryCatch(ProgramBelief$new(draws, expected_utility_fun = private$expected_util_fun, ...), error = function(err) NULL),
+      #       is_simulated = TRUE, prior_belief = self, hyperparam = self$hyperparam,
+      #       # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+      #       num_simulated_future_datasets = 1,
+      #       .options = furrr_options(
+      #         packages = c("magrittr", "tidyverse"),
+      #         seed = TRUE,
+      #         globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "Action")
+      #       ),
+      #       .progress = FALSE
+      #     ) %>%
+      #     compact()
+      # } else {
+      #   private$simulated_future_draws %>%
+      #     sample_n(num) %$%
+      #     map(
+      #       sim_draws, ProgramBelief$new,
+      #       is_simulated = TRUE, prior_belief = self, hyperparam = self$hyperparam,
+      #       expected_utility_fun = private$expected_util_fun,
+      #       # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+      #       num_simulated_future_datasets = 1
+      #     )
+      # }
+      # 
+      # return(new_beliefs)
     }
  ),
   
@@ -395,7 +430,8 @@ ProgramBelief <- R6Class(
     prior_belief = function() private$prior_belief_obj,
     stan_model = function() private$stan_model_obj,
     reward_param = function() private$reward_param_mean,
-    model_param_draws = function()draws$belief_draws,
+    model_param_draws = function() private$belief_draws,
+    expected_utility_fun = function() private$expected_util_fun,
     
     all_data = function() {
       if (!is_null(private$prior_belief_obj)) {
@@ -416,6 +452,7 @@ ProgramBelief <- R6Class(
     reward_param_mean = NULL,
     stan_model_obj = NULL,
     belief_draws = NULL,
+    expected_util_fun = NULL,
     
     fit_to_data = function(hyperparam, generate_dataset_size = lst(n_control_sim = 50, n_treated_sim = 50), iter_warmup = 500, iter_sampling = iter_warmup, ...) {
       stan_data <- lst(
@@ -429,15 +466,12 @@ ProgramBelief <- R6Class(
       ) %>% 
         list_modify(study_size = as.array(.$study_size))
       
-      #   model$variational(data = stan_data)
-      # tryCatch(
-        # model$sample(data = stan_data, iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = 4, parallel_chains = 4, max_treedepth = 12, refresh = 0, show_messages = FALSE, ...),
-        rstan::sampling(self$stan_model, data = stan_data, 
-                        warmup = iter_warmup, iter = iter_warmup + iter_sampling, chains = 4, cores = 4, 
-                        control = lst(max_treedepth = 12), 
-                        refresh = 0, show_messages = TRUE, open_progress = FALSE, ...)
-      #   error = function(err) browser()
-      # )
+      fit <- rstan::sampling(self$stan_model, data = stan_data, 
+                      warmup = iter_warmup, iter = iter_warmup + iter_sampling, chains = 4, cores = 4, 
+                      control = lst(adapt_delta = 0.99, max_treedepth = 12), 
+                      refresh = 0, show_messages = TRUE, open_progress = FALSE, ...)
+        
+      return(fit)
     },
     
     get_dataset_from_draws = function(draws) {
@@ -446,7 +480,40 @@ ProgramBelief <- R6Class(
         select(y_control = y_control_sim, y_treated = y_treated_sim) %>% 
         as.list() 
     },
-    
+   
+    build_simulated_beliefs = function(num, ...) {
+      new_beliefs <- if (num > 1) {
+        private$simulated_future_draws %>%
+          sample_n(num) %$%
+          future_map(
+            # BUG every so often I get an exception because of Stan fit with no samples. Not sure why.
+            sim_draws, function(draws, ...) tryCatch(ProgramBelief$new(draws, expected_utility_fun = private$expected_util_fun, ...), error = function(err) NULL),
+            is_simulated = TRUE, prior_belief = self, hyperparam = self$hyperparam,
+            # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+            num_simulated_future_datasets = 1,
+            .options = furrr_options(
+              packages = c("magrittr", "tidyverse"),
+              seed = TRUE,
+              globals = c("ProgramBelief", "BeliefNode", "KBanditActionSet", "ActionSet", "Action")
+            ),
+            .progress = FALSE
+          ) %>%
+          compact()
+      } else {
+        private$simulated_future_draws %>%
+          sample_n(num) %$%
+          map(
+            sim_draws, ProgramBelief$new,
+            is_simulated = TRUE, prior_belief = self, hyperparam = self$hyperparam,
+            expected_utility_fun = private$expected_util_fun,
+            # Here I'm only using multiple simulated datasets for the first set of simulated datasets, after that only one draw is used.
+            num_simulated_future_datasets = 1
+          )
+      }
+      
+      return(new_beliefs)
+    }, 
+      
     calculate_reward_param = function() {
       private$reward_param_mean <- private$belief_draws %>% 
         tidybayes::mean_qi(.width = c(0.8)) 
@@ -464,7 +531,17 @@ ObservedProgramBelief <- R6Class(
     initialize = function(program_period, dataset_draws, ...) {
       super$initialize(dataset_draws, is_simulated = FALSE, ...)
       private$program_period_obj <- program_period
-    }, 
+      
+      # private$simulated_future_draws %<>% 
+      #   mutate(simulated_belief = private$build_simulated_beliefs(nrow(.)))
+    },
+    
+    
+    # get_simulated_beliefs = function(num, ...) {
+    #   private$simulated_future_draws %>% 
+    #     sample_n(num) %>% 
+    #     pull(simulated_belief)
+    # },
     
     get_next_observed_belief = function(current_period, ...) {
       stopifnot(current_period > private$program_period_obj$period_index)
