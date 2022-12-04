@@ -1,0 +1,10 @@
+[deps]
+AdvancedPS = "576499cb-2369-40b2-a588-c64705576edc"
+Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+POMDPLinter = "f3bd98c0-eb40-45e2-9eb1-f2763262d755"
+POMDPs = "a93abf59-7444-517b-a68a-c42f96afdd7d"
+Pipe = "b98c9c47-44ae-5843-9183-064241ee97a0"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
