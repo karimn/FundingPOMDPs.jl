@@ -18,3 +18,9 @@ _quarto.yml
 *.html
 
 *.pdf
+
+.vscode/
+
+sim_model
+
+sim_model.rds
