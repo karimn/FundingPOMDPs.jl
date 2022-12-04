@@ -48,7 +48,7 @@ KBanditActionSet <- R6Class(
 
 # Solve -------------------------------------------------------------------
 
-num_sim <- 6
+num_sim <- 1
 
 testenv <- map(seq(num_sim), ~ { 
   create_environment(
@@ -87,7 +87,7 @@ run_rl_sim <- function(env, sim_id, depth, discount = 0.95) {
         KBanditActionSet$new() %>% 
         env$solve_online_pomdp(
           hyperparam = infer_hyperparam, 
-          num_simulated_future_datasets = 100, 
+          num_simulated_future_datasets = 50, 
           stan_model = stan_model,
           discount = discount, 
           plan_depth = depth,
