@@ -1,8 +1,4 @@
-
-abstract type AbstractState end
-abstract type AbstractProgramState end
-
-struct ProgramState <: AbstractProgramState 
+struct ProgramDGP <: AbstractProgramDGP 
     μ::Float64
     τ::Float64
     σ::Float64
@@ -11,32 +7,46 @@ struct ProgramState <: AbstractProgramState
     programid::Int64
 end
 
-getprogramid(ps::ProgramState) = ps.programid
-
-function ProgramState(hyperparam::SimDGP.Hyperparam, rng::Random.AbstractRNG, programid::Int64) 
+function ProgramDGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, programid::Int64) 
     μ = Base.rand(rng, Distributions.Normal(0, hyperparam.mu_sd))
     τ = Base.rand(rng, Distributions.Normal(hyperparam.tau_mean, hyperparam.tau_sd))
     σ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.sigma_sd), 0, Inf))
     η = [Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[i]), 0, Inf)) for i in 1:2]
 
-    ProgramState(μ, τ, σ, Tuple{Float64, Float64}(η), programid) 
+    ProgramDGP(μ, τ, σ, Tuple{Float64, Float64}(η), programid) 
 end
 
-function rand(rng::Random.AbstractRNG, ps::ProgramState, samplesize::Int64 = 50) 
-    μ_study = ps.μ + rand(rng, Distributions.Normal(0, ps.η[1]))
-    τ_study = ps.τ + rand(rng, Distributions.Normal(0, ps.η[2]))
+Base.show(io::IO, pdgp::ProgramDGP) = Printf.@printf(io, "ProgramDGP(μ = %.2f, τ = %.2f, σ =  %.2f, η = [%.2f, %.2f])", pdgp.μ, pdgp.τ, pdgp.σ, pdgp.η[1], pdgp.η[2])  
 
-    y_control = rand(rng, Normal(μ_study, ps.σ), ss) 
-    y_treated = rand(rng, Normal(τ_study, ps.σ), ss) 
+getprogramid(pd::ProgramDGP) = pd.programid
 
-    sd = StudyDataset(y_control, y_treated)
+struct ProgramCausalState <: AbstractProgramState 
+    μ::Float64
+    τ::Float64
+    σ::Float64
 
-    return ProgramEvalObservation(sd, getprogramid(ps))
+    programid::Int64
 end
 
-function logpdf(ps::ProgramState, ds::StudyDataset) 
-    controldist = Distributions.Normal(ps.μ, sqrt(ps.σ^2 + ps.η[1]^2)) 
-    treateddist = Distributions.Normal(ps.μ + ps.τ, sqrt(ps.σ^2 + ps.η[2]^2)) 
+function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP) 
+    μ_study = pd.μ + Base.rand(rng, Distributions.Normal(0, pd.η[1]))
+    τ_study = pd.τ + Base.rand(rng, Distributions.Normal(0, pd.η[2]))
+
+    return ProgramCausalState(μ_study, τ_study, pd.σ, pd.programid)
+end
+
+getprogramid(ps::ProgramCausalState) = ps.programid
+
+function Base.rand(rng::Random.AbstractRNG, ps::ProgramCausalState, samplesize::Int64 = 50) 
+    y_control = Base.rand(rng, Normal(ps.μ, ps.σ), samplesize) 
+    y_treated = Base.rand(rng, Normal(ps.τ, ps.σ), samplesize) 
+
+    return ProgramEvalObservation(StudyDataset(y_control, y_treated), getprogramid(ps))
+end
+
+function logpdf(ps::ProgramCausalState, ds::StudyDataset) 
+    controldist = Distributions.Normal(ps.μ, ps.σ) 
+    treateddist = Distributions.Normal(ps.μ + ps.τ, ps.σ) 
 
     Σcontrollogpdf = reduce(ds.y_control, init = 0) do total, y
         total + logpdf(controldist, y)
@@ -49,14 +59,35 @@ function logpdf(ps::ProgramState, ds::StudyDataset)
     return Σcontrollogpdf + Σtreatedlogpdf
 end
 
-pdf(ps::ProgramState, ds::StudyDataset) = exp(logpdf(ps, ds))
+logpdf(ps::ProgramCausalState, progobs::AbstractProgramEvalObservation) = logpdf(ps, progobs.d)
 
-struct State{T <: AbstractProgramState} <: AbstractState 
-    programstates::Dict{Int64, T}
+POMDPs.pdf(ps::ProgramCausalState, ds::StudyDataset) = exp(logpdf(ps, ds))
+POMDPs.pdf(ps::ProgramCausalState, progobs::AbstractProgramEvalObservation) = exp(logpdf(ps, progobs))
+
+Base.show(io::IO, ps::ProgramCausalState) = Printf.@printf(io, "ProgramCausalState(μ = %.2f, τ = %.2f, σ =  %.2f)", ps.μ, ps.τ, ps.σ)  
+
+struct DGP <: AbstractDGP
+    programdgps::Dict{Int64, AbstractProgramDGP}
 end
 
-function State{T}(hyperparam::SimDGP.Hyperparam, rng::Random.AbstractRNG, numprograms::Int64) where {T <: AbstractProgramState}
-    State{T}(Dict(i => T(hyperparam, rng, i) for i in 1:numprograms)) 
+ function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64, ::Type{T} = ProgramDGP) where {T <: AbstractProgramDGP}
+    DGP(Dict(i => T(hyperparam, rng, i) for i in 1:numprograms)) 
 end
 
-numprograms(s::State{T}) where {T <: AbstractProgramState} = length(s.programstates)
+numprograms(dgp::DGP) = length(dgp.programdgps)
+
+struct CausalState <: AbstractState 
+    programstates::Dict{Int64, AbstractProgramState}
+end
+
+Base.rand(rng::Random.AbstractRNG, dgp::DGP) = CausalState(Dict(pid => Base.rand(rng, pdgp) for (pid, pdgp) in dgp.programdgps))
+
+Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation([Base.rand(rng, ps, samplesize) for ps in s.programstates])
+
+numprograms(s::CausalState) = length(s.programstates)
+
+struct CausalStateDistribution
+    dgp::AbstractDGP
+end
+
+Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp) 

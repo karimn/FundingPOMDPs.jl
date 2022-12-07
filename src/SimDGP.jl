@@ -1,9 +1,5 @@
-module SimDGP 
-
 using Turing
 using DataFrames
-
-export StudyDataset, Hyperparam
 
 struct StudyDataset
     y_control::Vector{Float64}
@@ -59,21 +55,3 @@ end
 
     return (datasets = datasets, μ_toplevel = μ_toplevel, μ_study = μ_study)
 end
-
-end # Module
-
-#=
-test_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
-
-test_model = sim_model(test_hyperparam, n_sim_study = 10, n_sim_obs = 50)
-
-c = sample(test_model, Prior(), 500)
-c = test_model()
-
-test_model2 = sim_model(test_hyperparam, datasets = c.datasets, n_sim_study = 10, n_sim_obs = 50)
-c2 = sample(test_model2, NUTS(), MCMCThreads(), 500, 4)
-
-df = DataFrame(c2)
-
-c3 = sample(test_model2, SMC(), 500)
-=#

@@ -1,14 +1,10 @@
+using Parameters
 
-abstract type AbstractFundingAction end
-abstract type AbstractActionSet{T <: AbstractProgramState} end
-
-struct ImplementEvalAction{T <: AbstractProgramState} <: AbstractFundingAction
-    implement_eval_programs::Dict{Int64, T}
+@with_kw struct ImplementEvalAction <: AbstractFundingAction
+    implement_eval_programs::BitSet = BitSet() 
 end
 
-function ImplementEvalAction{T}() where {T <: AbstractProgramState}
-    ImplementEvalAction{T}(Dict{Int64, T}())
-end
+ImplementEvalAction(pids::Vector{Int64}) = ImplementEvalAction(BitSet(pids))
 
-implements(a::ImplementEvalAction{T}, i::Int64) where {T <: AbstractProgramState} = hashash(a.implement_eval_programs, i)
-get_evaluated_programs(a::ImplementEvalAction{T}) where {T <: AbstractProgramState} = a.implement_eval_programs
+implements(a::ImplementEvalAction, i::Int64) = in(a.implement_eval_programs, i)
+get_evaluated_program_ids(a::ImplementEvalAction) = a.implement_eval_programs

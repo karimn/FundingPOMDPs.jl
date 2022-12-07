@@ -1,5 +1,3 @@
-abstract type AbstractRewardModel end
-
 struct ExponentialUtilityModel <: AbstractRewardModel
     α::Float64
 end
