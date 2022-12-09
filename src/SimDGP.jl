@@ -14,6 +14,10 @@ function StudyDataset(n::Int64)
     StudyDataset(n, n)
 end
 
+function Base.show(io::IO, dataset::StudyDataset) 
+    Printf.@printf(io, "StudyDataset(sample means = (%.2f, %.2f), sample SD = (%.2f, %.2f))", mean(dataset.y_control), mean(dataset.y_treated), std(dataset.y_control; corrected = false), std(dataset.y_treated; corrected = false))  
+end
+
 const StudyHistory = Vector{StudyDataset}
 
 struct Hyperparam
