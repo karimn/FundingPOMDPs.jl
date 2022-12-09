@@ -4,6 +4,8 @@ import Combinatorics
 import Random
 import Printf
 
+using Statistics
+
 using POMDPTools
 using POMDPs
 using POMDPLinter
@@ -45,11 +47,15 @@ function KBanditActionSet(nprograms, nimplement)
     return KBanditActionSet(actionlist)
 end
 
-numactions(as::KBanditActionSet) = length(as.implement_eval_programs)
+numactions(as::KBanditActionSet) = length(as.actions)
 
 Base.iterate(as::KBanditActionSet) = iterate(as.actions)
 
-Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet) = as.implement_eval_programs[rang(rng, 1:length(numactions(as)))] 
+function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet) 
+    actid = Base.rand(rng, 1:numactions(as))
+
+    as.actions[actid] 
+end
 
 struct KBanditFundingMDP{S <: AbstractState, A <: AbstractFundingAction, R <: AbstractRewardModel} <: MDP{S, A}
     rewardmodel::R
@@ -88,21 +94,14 @@ POMDPs.isterminal(m::KBanditFundingProblem) = false
 
 POMDPs.transition(m::KBanditFundingProblem, ::Any, ::Any) = CausalStateDistribution(mdp(m).dgp) #POMDPTools.Deterministic(s)
 
-POMDPs.actions(m::KBanditFundingProblem, ::Any) = mdp(m).actionset
+POMDPs.actions(m::KBanditFundingProblem) = mdp(m).actionset
+POMDPs.actions(m::KBanditFundingProblem, ::Any) = POMDPs.actions(m)
 
 function POMDPs.reward(m::KBanditFundingProblem{S, A, O, R}, s::S, a::A) where {S, A, O, R}  
     expectedreward = 0
 
     for (i, p) in s.programstates
-        if a.implements(i)
-            μ = p.μ + p.τ
-            σ = sqrt(p.σ^2 + p.η[2]^2)
-        else
-            μ = p.μ
-            σ = sqrt(p.σ^2 + p.η[1]^2)
-        end
-
-        expectedreward += expectedutility(mdp(m).rewardmodel, μ, σ)
+        expectedreward += expectedutility(mdp(m).rewardmodel, implements(a, i) ? p.μ + p.τ : p.μ, p.σ)
     end
 
     return expectedreward
@@ -110,8 +109,8 @@ end
 
 POMDPs.initialstate(m::KBanditFundingProblem) = CausalStateDistribution(mdp(m).dgp) 
 
-function POMDPs.observation(pomdp::KBanditFundingPOMDP{S, A, O, R}, a::A, sp::S) where {S, A, O, R}
-    return MultiStudySampleDistribution{StudySampleDistribution{S}}([StudySampleDistribution{S}(program, pomdp.studysamplesize) for program in get_evaluated_programs(a)])
+function POMDPs.observation(pomdp::KBanditFundingPOMDP{S, A, O, R}, s::S, a::A, sp::S) where {S, A, O, R}
+    return MultiStudySampleDistribution(Dict(pid => StudySampleDistribution(getprogramstate(s, pid), pomdp.mdp.studysamplesize) for pid in get_evaluated_program_ids(a)))
 end
 
 end # module
