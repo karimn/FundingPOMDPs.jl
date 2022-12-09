@@ -4,6 +4,7 @@ abstract type AbstractProgramDGP end
 abstract type AbstractState end
 abstract type AbstractProgramState end
 
+abstract type AbstractStudySampleDistribution end
 abstract type AbstractSampleDistribution end
 abstract type AbstractEvalObservation end
 abstract type AbstractProgramEvalObservation end
