@@ -49,11 +49,11 @@ function logpdf(ps::ProgramCausalState, ds::StudyDataset)
     treateddist = Distributions.Normal(ps.μ + ps.τ, ps.σ) 
 
     Σcontrollogpdf = reduce(ds.y_control, init = 0) do total, y
-        total + logpdf(controldist, y)
+        total + log(pdf(controldist, y))
     end
 
     Σtreatedlogpdf = reduce(ds.y_treated, init = 0) do total, y
-        total + logpdf(treateddist, y)
+        total + log(pdf(treateddist, y))
     end
 
     return Σcontrollogpdf + Σtreatedlogpdf
@@ -61,8 +61,8 @@ end
 
 logpdf(ps::ProgramCausalState, progobs::AbstractProgramEvalObservation) = logpdf(ps, progobs.d)
 
-POMDPs.pdf(ps::ProgramCausalState, ds::StudyDataset) = exp(logpdf(ps, ds))
-POMDPs.pdf(ps::ProgramCausalState, progobs::AbstractProgramEvalObservation) = exp(logpdf(ps, progobs))
+Distributions.pdf(ps::ProgramCausalState, ds::StudyDataset) = exp(logpdf(ps, ds))
+Distributions.pdf(ps::ProgramCausalState, progobs::AbstractProgramEvalObservation) = exp(logpdf(ps, progobs))
 
 Base.show(io::IO, ps::ProgramCausalState) = Printf.@printf(io, "ProgramCausalState(μ = %.2f, τ = %.2f, σ =  %.2f)", ps.μ, ps.τ, ps.σ)  
 
@@ -85,6 +85,8 @@ Base.rand(rng::Random.AbstractRNG, dgp::DGP) = CausalState(Dict(pid => Base.rand
 Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation([Base.rand(rng, ps, samplesize) for ps in s.programstates])
 
 numprograms(s::CausalState) = length(s.programstates)
+
+getprogramstate(s::CausalState, id) = s.programstates[id]
 
 struct CausalStateDistribution
     dgp::AbstractDGP
