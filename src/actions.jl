@@ -1,5 +1,3 @@
-using Parameters
-
 @with_kw struct ImplementEvalAction <: AbstractFundingAction
     implement_eval_programs::BitSet = BitSet() 
 end
