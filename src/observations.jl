@@ -5,11 +5,19 @@ end
 
 getprogramid(o::ProgramEvalObservation) = o.programid
 
+getdataset(o::ProgramEvalObservation) = o.d
+
 struct EvalObservation <: AbstractEvalObservation
     programobs::Dict{Int64, AbstractProgramEvalObservation}
 end
 
 EvalObservation(pos::Vector{AbstractProgramEvalObservation}) = EvalObservation(Dict(getprogramid(po) => po for po in pos))
+
+getprogramids(o::EvalObservation) = keys(o.programobs)
+
+getdatasets(obs::EvalObservation) = Dict(pid => getdataset(o) for (pid, o) in obs.programobs)
+
+numprograms(obs::EvalObservation) = length(obs.programobs)
 
 struct StudySampleDistribution <: AbstractStudySampleDistribution
     programstate::AbstractProgramState
@@ -17,6 +25,7 @@ struct StudySampleDistribution <: AbstractStudySampleDistribution
 end
 
 getprogramid(d::StudySampleDistribution) = getprogramid(d.programstate)
+
 Base.rand(rng::Random.AbstractRNG, d::StudySampleDistribution) = Base.rand(rng, d.programstate, d.samplesize) 
 logpdf(d::StudySampleDistribution, ds::StudyDataset) = logpdf(d.programstate, ds)
 Distributions.pdf(d::StudySampleDistribution, ds::StudyDataset) = Distributions.pdf(d.programstate, ds)

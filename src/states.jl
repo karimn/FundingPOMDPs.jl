@@ -26,14 +26,24 @@ struct ProgramCausalState <: AbstractProgramState
     σ::Float64
 
     programid::Int64
+
+    prevprogstate::Union{Nothing, AbstractProgramState}
 end
 
-function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP) 
+ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
+
+function ProgramCausalState(rng::Random.AbstractRNG, μ_toplevel::Float64, τ_toplevel::Float64, σ::Float64, η::Tuple{Float64, Float64}, id::Int64, prev::Union{Nothing, AbstractProgramState} = nothing)
+    return ProgramCausalState(Base.rand(rng, Distributions.Normal(μ_toplevel, η[1])), Base.rand(rng, Distributions.Normal(τ_toplevel, η[2])), σ, id, prev)
+end 
+
+function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP, prev::Union{Nothing, AbstractProgramState} = nothing)   
     μ_study = pd.μ + Base.rand(rng, Distributions.Normal(0, pd.η[1]))
     τ_study = pd.τ + Base.rand(rng, Distributions.Normal(0, pd.η[2]))
 
-    return ProgramCausalState(μ_study, τ_study, pd.σ, pd.programid)
+    return ProgramCausalState(μ_study, τ_study, pd.σ, pd.programid, prev)
 end
+
+getprevprogstate(ps::ProgramCausalState) = ps.prevprogstate
 
 getprogramid(ps::ProgramCausalState) = ps.programid
 
@@ -78,11 +88,22 @@ numprograms(dgp::DGP) = length(dgp.programdgps)
 
 struct CausalState <: AbstractState 
     programstates::Dict{Int64, AbstractProgramState}
+
+    prevstate::Union{Nothing, AbstractState}
 end
 
-Base.rand(rng::Random.AbstractRNG, dgp::DGP) = CausalState(Dict(pid => Base.rand(rng, pdgp) for (pid, pdgp) in dgp.programdgps))
+function Base.rand(rng::Random.AbstractRNG, dgp::DGP, prev::Union{Nothing, AbstractState} = nothing) 
+    return CausalState(
+        Dict(pid => Base.rand(rng, pdgp, prev === nothing ? nothing : getprogramstate(prev, pid)) for (pid, pdgp) in dgp.programdgps), 
+        prev
+    )
+end
 
-Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation([Base.rand(rng, ps, samplesize) for ps in s.programstates])
+Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation(Dict(pid => Base.rand(rng, ps, samplesize) for (pid, ps) in s.programstates))
+
+Base.iterate(s::CausalState) = Base.iterate(values(s.programstates))
+Base.iterate(s::CausalState, n) = Base.iterate(values(s.programstates), n)
+Base.length(s::CausalState) = length(s.programstates)
 
 numprograms(s::CausalState) = length(s.programstates)
 

@@ -1,5 +1,3 @@
-using Turing
-using DataFrames
 
 struct StudyDataset
     y_control::Vector{Float64}
@@ -31,7 +29,6 @@ struct Hyperparam
 end
 
 @model function sim_model(hyperparam::Hyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0)
-
     if datasets === missing 
         n_study = n_sim_study 
         datasets = [StudyDataset(n_sim_obs) for i in 1:n_sim_study]

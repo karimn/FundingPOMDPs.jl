@@ -3,6 +3,8 @@ module FundingPOMDPs
 import Combinatorics
 import Random
 import Printf
+import DynamicPPL
+import StatsBase
 
 using Statistics
 
@@ -10,6 +12,10 @@ using POMDPTools
 using POMDPs
 using POMDPLinter
 using Distributions
+using Parameters
+using Turing
+using DataFrames
+using Pipe
 
 include("SimDGP.jl")
 
@@ -18,8 +24,9 @@ include("states.jl")
 include("actions.jl")
 include("reward.jl")
 include("observations.jl")
+include("beliefs.jl")
 
-export StudyDataset, Hyperparam
+export StudyDataset, Hyperparam, sim_model
 export AbstractDGP, AbstractProgramDGP, AbstractState 
 export DGP, ProgramDGP, CausalState
 export AbstractEvalObservation
@@ -32,6 +39,7 @@ export AbstractActionSet
 export KBanditFundingMDP, KBanditFundingPOMDP, KBanditActionSet
 #export discount, isterminal, transition, actions, reward, observation, initialstate, rand 
 export numprograms
+export FullBayesianBelief, FullBayesianUpdater
 
 struct KBanditActionSet <: AbstractActionSet
     actions::Vector{ImplementEvalAction}
@@ -57,29 +65,44 @@ function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet)
     as.actions[actid] 
 end
 
-struct KBanditFundingMDP{S <: AbstractState, A <: AbstractFundingAction, R <: AbstractRewardModel} <: MDP{S, A}
+mutable struct KBanditFundingMDP{S <: AbstractState, A <: AbstractFundingAction, R <: AbstractRewardModel} <: MDP{S, A}
     rewardmodel::R
     discount::Float64
     nimplement::Int64
     studysamplesize::Int64
     dgp::AbstractDGP
+    rng::Random.AbstractRNG
     actionset::AbstractActionSet
+
+    currentstate::S
 end
 
-function KBanditFundingMDP{S, A, R}(r::R, d::Float64, ni::Int64, ss::Int64, dgp::AbstractDGP) where {S, A, R <: AbstractRewardModel}
+function KBanditFundingMDP{S, A, R}(r::R, d::Float64, ni::Int64, ss::Int64, dgp::AbstractDGP, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {S, A, R <: AbstractRewardModel}
     ni <= numprograms(dgp) || throw(ArgumentError("number of programs to implement greater than number of programs"))
 
-    KBanditFundingMDP{S, A, R}(r, d, ni, ss, dgp, KBanditActionSet(numprograms(dgp), ni))
+    initstate = Base.rand(rng, dgp)
+
+    return KBanditFundingMDP{S, A, R}(r, d, ni, ss, dgp, rng, KBanditActionSet(numprograms(dgp), ni), initstate)
 end 
 
 mdp(m::KBanditFundingMDP) = m 
 
 struct KBanditFundingPOMDP{S <: AbstractState, A <: AbstractFundingAction, O <: AbstractEvalObservation, R <: AbstractRewardModel} <: POMDP{S, A, O}
     mdp::KBanditFundingMDP{S, A, R}
+
+    data::Vector{Vector{StudyDataset}}
 end
 
-function KBanditFundingPOMDP{S, A, O, R}(r::R, d::Float64, ni::Int64, ss::Int64, dgp::AbstractDGP) where {S, A, O, R <: AbstractRewardModel}
-    KBanditFundingPOMDP{S, A, O, R}(KBanditFundingMDP{S, A, R}(r, d, ni, ss, dgp, KBanditActionSet(numprograms(dgp), ni)))
+function KBanditFundingPOMDP{S, A, O, R}(mdp::KBanditFundingMDP) where {S, A, O, R <: AbstractRewardModel}
+    initdatasets = [[ds] for ds in values(getdatasets(Base.rand(mdp.rng, mdp.currentstate, mdp.studysamplesize)))]
+    
+    return KBanditFundingPOMDP{S, A, O, R}(mdp, initdatasets)
+end 
+
+function KBanditFundingPOMDP{S, A, O, R}(r::R, d::Float64, ni::Int64, ss::Int64, dgp::AbstractDGP, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {S, A, O, R <: AbstractRewardModel}
+    mdp = KBanditFundingMDP{S, A, R}(r, d, ni, ss, dgp, rng)
+
+    return KBanditFundingPOMDP{S, A, O, R}(mdp)
 end
 
 const KBanditFundingProblem{S, A, O, R} = Union{KBanditFundingPOMDP{S, A, O, R}, KBanditFundingMDP{S, A, R}}
@@ -92,7 +115,7 @@ POMDPs.discount(m::KBanditFundingProblem) = mdp(m).discount
 
 POMDPs.isterminal(m::KBanditFundingProblem) = false 
 
-POMDPs.transition(m::KBanditFundingProblem, ::Any, ::Any) = CausalStateDistribution(mdp(m).dgp) #POMDPTools.Deterministic(s)
+POMDPs.transition(m::KBanditFundingProblem, ::Any, ::Any) = POMDPTools.Deterministic(m.currentstate) # CausalStateDistribution(mdp(m).dgp) 
 
 POMDPs.actions(m::KBanditFundingProblem) = mdp(m).actionset
 POMDPs.actions(m::KBanditFundingProblem, ::Any) = POMDPs.actions(m)

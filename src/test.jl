@@ -5,6 +5,7 @@ import Random
 import POMDPs, POMDPTools, POMDPSimulators
 import ParticleFilters
 import Base: rand, show
+import Turing
 
 test_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
 
@@ -40,3 +41,9 @@ for (s, a, o, b, bp) in POMDPSimulators.stepthrough(pomdp, randpolicy, bsf, inst
 end
 
 POMDPs.updater(randpolicy)
+
+bayes_model = sim_model(test_hyperparam, [pomdp.data[1][1]])
+c = Turing.sample(bayes_model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)
+
+fbb = FullBayesianBelief(pomdp.data, test_hyperparam)
+rand(Random.GLOBAL_RNG, fbb)
