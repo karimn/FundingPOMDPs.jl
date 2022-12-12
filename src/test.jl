@@ -45,5 +45,5 @@ POMDPs.updater(randpolicy)
 bayes_model = sim_model(test_hyperparam, [pomdp.data[1][1]])
 c = Turing.sample(bayes_model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)
 
-fbb = FullBayesianBelief(pomdp.data, test_hyperparam)
+fbb = initialbelief(pomdp)
 rand(Random.GLOBAL_RNG, fbb)

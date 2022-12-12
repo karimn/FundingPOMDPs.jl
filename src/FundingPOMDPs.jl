@@ -38,7 +38,7 @@ export ImplementEvalAction
 export AbstractActionSet
 export KBanditFundingMDP, KBanditFundingPOMDP, KBanditActionSet
 #export discount, isterminal, transition, actions, reward, observation, initialstate, rand 
-export numprograms
+export numprograms, initialbelief
 export FullBayesianBelief, FullBayesianUpdater
 
 struct KBanditActionSet <: AbstractActionSet
@@ -135,5 +135,7 @@ POMDPs.initialstate(m::KBanditFundingProblem) = CausalStateDistribution(mdp(m).d
 function POMDPs.observation(pomdp::KBanditFundingPOMDP{S, A, O, R}, s::S, a::A, sp::S) where {S, A, O, R}
     return MultiStudySampleDistribution(Dict(pid => StudySampleDistribution(getprogramstate(s, pid), pomdp.mdp.studysamplesize) for pid in get_evaluated_program_ids(a)))
 end
+
+initialbelief(m::KBanditFundingPOMDP) = FullBayesianBelief(m.data, hyperparam(mdp(m).dgp))
 
 end # module
