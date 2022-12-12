@@ -78,13 +78,16 @@ Base.show(io::IO, ps::ProgramCausalState) = Printf.@printf(io, "ProgramCausalSta
 
 struct DGP <: AbstractDGP
     programdgps::Dict{Int64, AbstractProgramDGP}
+    hyperparam::Hyperparam
 end
 
  function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64, ::Type{T} = ProgramDGP) where {T <: AbstractProgramDGP}
-    DGP(Dict(i => T(hyperparam, rng, i) for i in 1:numprograms)) 
+    return DGP(Dict(i => T(hyperparam, rng, i) for i in 1:numprograms), hyperparam) 
 end
 
 numprograms(dgp::DGP) = length(dgp.programdgps)
+
+hyperparam(dgp::DGP) = dgp.hyperparam
 
 struct CausalState <: AbstractState 
     programstates::Dict{Int64, AbstractProgramState}
