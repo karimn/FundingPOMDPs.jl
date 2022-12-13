@@ -1,51 +1,69 @@
+struct FullBayesianProgramBelief
+    posterior_samples::DataFrame
+    pid::Int64
+end
+
+function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, a::AbstractFundingAction)
+    return mean(
+        expectedutility(
+            r, 
+            implements(a, pb.pid) ? pb.posterior_samples.μ_toplevel + pb.posterior_samples.τ_toplevel : pb.posterior_samples.μ_toplevel, 
+            sqrt.(pb.posterior_samples.σ_toplevel.^2 + pb.posterior_samples[:, "η_toplevel[1]"].^2 .+ (implements(a, pb.pid) ? pb.posterior_samples[:, "η_toplevel[2]"].^2 : 0.0))
+        )
+    )
+end
+
+function Base.show(io::IO, pb::FullBayesianProgramBelief) 
+    Printf.@printf(
+        io, "FullBayesianProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f, E[η] = (%.2f, %.2f))", 
+        mean(pb.posterior_samples.μ_toplevel), mean(pb.posterior_samples.τ_toplevel), mean(pb.posterior_samples.σ_toplevel), mean(pb.posterior_samples[:, "η_toplevel[1]"]), mean(pb.posterior_samples[:, "η_toplevel[2]"])
+    ) 
+end
+
+function Base.rand(rng::Random.AbstractRNG, pb::FullBayesianProgramBelief)
+    randrow = pb.posterior_samples[StatsBase.sample(rng, axes(df, 1), 1), :]
+
+    return ProgramCausalState(rng, randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
+end
+
 struct FullBayesianBelief
-    hist::AbstractVector{@NamedTuple{a::AbstractFundingAction, o::EvalObservation}}
     datasets::Vector{Vector{StudyDataset}}
-    posterior_samples::Vector{DataFrame}
+    progbeliefs::Vector{FullBayesianProgramBelief}
 end
 
 function FullBayesianBelief(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam)
-    samples = map(datasets) do ds
-        model = sim_model(hyperparam, ds)
-        return @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
-            select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]") 
+    samples = Vector{FullBayesianProgramBelief}(undef, length(datasets))
+
+    for pid in 1:length(samples)
+        model = sim_model(hyperparam, datasets[pid])
+        samples[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
+            select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]")  |>
+            FullBayesianProgramBelief(_, pid)
     end
         
-    return FullBayesianBelief([], datasets, samples)
+    return FullBayesianBelief(datasets, samples)
 end
 
 function FullBayesianBelief(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief)
-    datasets = copy(priorbelief.datasets) 
-    samples = copy(priorbelief.posterior_samples)
-    hist = copy(priorbelief.hist)
-    append!(hist, (:a => a, :o => o))
+    datasets = deepcopy(priorbelief.datasets) 
+    progbeliefs = copy(priorbelief.progbeliefs)
 
     for (pid, ds) in getdatasets(o)
-        model = sim_model(hyperparam, ds)
-
-        append!(datasets[pid], ds) 
-        samples[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
-            select("μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]")    
+        push!(datasets[pid], ds) 
+        model = sim_model(hyperparam, datasets[pid])
+        progbeliefs[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
+            select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]") |>
+            FullBayesianProgramBelief(_, pid)
     end
 
-    return FullBayesianBelief(hist, datasets, samples)
+    return FullBayesianBelief(datasets, progbeliefs)
 end
-
-POMDPs.history(b::FullBayesianBelief) = b.hist
 
 function POMDPs.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
-    numprog = length(belief.posterior_samples)
-    randprogstates = Vector{ProgramCausalState}(undef, numprog)
-
-    for pid in 1:numprog
-        df = belief.posterior_samples[pid]
-        randrow = df[StatsBase.sample(rng, axes(df, 1), 1), :]
-
-        randprogstates[pid] = ProgramCausalState(rng, randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pid)
-    end
-
-    return CausalState(Dict(getprogramid(progstate) => progstate for progstate in randprogstates), nothing)
+    return CausalState(Dict(pid => Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs)), nothing)
 end
+
+expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
 
 struct FullBayesianUpdater <: POMDPs.Updater
     hyperparam::Hyperparam
