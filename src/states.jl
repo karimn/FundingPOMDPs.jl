@@ -20,6 +20,16 @@ Base.show(io::IO, pdgp::ProgramDGP) = Printf.@printf(io, "ProgramDGP(μ = %.2f, 
 
 getprogramid(pd::ProgramDGP) = pd.programid
 
+function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, a::AbstractFundingAction) 
+    impl = implements(a, progdgp.programid)
+
+    return expectedutility(
+        r, 
+        progdgp.μ + (impl ? progdgp.τ : 0), 
+        sqrt(progdgp.σ^2 + progdgp.η[1]^2 + (impl ? progdgp.η[2]^2 : 0))
+    )
+end
+
 struct ProgramCausalState <: AbstractProgramState 
     μ::Float64
     τ::Float64
@@ -49,7 +59,7 @@ getprogramid(ps::ProgramCausalState) = ps.programid
 
 function Base.rand(rng::Random.AbstractRNG, ps::ProgramCausalState, samplesize::Int64 = 50) 
     y_control = Base.rand(rng, Normal(ps.μ, ps.σ), samplesize) 
-    y_treated = Base.rand(rng, Normal(ps.τ, ps.σ), samplesize) 
+    y_treated = Base.rand(rng, Normal(ps.μ + ps.τ, ps.σ), samplesize) 
 
     return ProgramEvalObservation(StudyDataset(y_control, y_treated), getprogramid(ps))
 end
@@ -88,6 +98,8 @@ end
 numprograms(dgp::DGP) = length(dgp.programdgps)
 
 hyperparam(dgp::DGP) = dgp.hyperparam
+
+expectedutility(r::ExponentialUtilityModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for (_, pdgp) in dgp.programdgps)
 
 struct CausalState <: AbstractState 
     programstates::Dict{Int64, AbstractProgramState}
