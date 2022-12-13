@@ -34,17 +34,8 @@ struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
 end
 
 function FullBayesianBelief{M}(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam) where {M <: AbstractBayesianModel}
-    samples = Vector{FullBayesianProgramBelief}(undef, length(datasets))
     m = M(hyperparam)
-
-    for pid in 1:length(samples)
-        #=model = sim_model(hyperparam, datasets[pid])
-        samples[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
-            select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]")  |>
-            FullBayesianProgramBelief(_, pid)
-            =#
-        samples[pid] = FullBayesianProgramBelief(sample(m, datasets[pid]), pid)
-    end
+    samples = [FullBayesianProgramBelief(sample(m, datasets[pid]), pid) for pid in 1:length(datasets)]
         
     return FullBayesianBelief{M}(datasets, samples)
 end
@@ -56,12 +47,6 @@ function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyp
 
     for (pid, ds) in getdatasets(o)
         push!(datasets[pid], ds) 
-        #=
-        model = sim_model(hyperparam, datasets[pid])
-        progbeliefs[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
-            select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]") |>
-            FullBayesianProgramBelief(_, pid)
-            =#
         progbeliefs[pid] = FullBayesianProgramBelief(sample(m, datasets[pid]), pid) 
     end
 
