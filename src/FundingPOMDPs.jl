@@ -17,9 +17,8 @@ using Turing
 using DataFrames
 using Pipe
 
-include("SimDGP.jl")
-
 include("abstract.jl")
+include("SimDGP.jl")
 include("reward.jl")
 include("states.jl")
 include("actions.jl")
@@ -40,9 +39,10 @@ export ImplementEvalAction
 export AbstractActionSet, AbstractFundingAction
 export KBanditFundingMDP, KBanditFundingPOMDP, KBanditActionSet
 #export discount, isterminal, transition, actions, reward, observation, initialstate, rand 
-export numprograms, initialbelief
+export numprograms, initialbelief, rewardmodel
 export FullBayesianBelief, FullBayesianUpdater
 export BayesianGreedySolver, BayesianGreedyPlanner
+export TuringModel
 
 struct KBanditActionSet <: AbstractActionSet
     actions::Vector{ImplementEvalAction}
@@ -91,34 +91,34 @@ end
 
 mdp(m::KBanditFundingMDP) = m 
 
-struct KBanditFundingPOMDP{S <: AbstractState, A <: AbstractFundingAction, O <: AbstractEvalObservation, R <: AbstractRewardModel} <: POMDP{S, A, O}
+struct KBanditFundingPOMDP{S <: AbstractState, A <: AbstractFundingAction, O <: AbstractEvalObservation, R <: AbstractRewardModel, B <: AbstractBelief} <: POMDP{S, A, O}
     mdp::KBanditFundingMDP{S, A, R}
 
     data::Vector{Vector{StudyDataset}}
-    initbelief::FullBayesianBelief
+    initbelief::B
 end
 
-function KBanditFundingPOMDP{S, A, O, R}(mdp::KBanditFundingMDP{S, A, R}, data::Vector{Vector{StudyDataset}}) where {S, A, O, R <: AbstractRewardModel} 
-    return KBanditFundingPOMDP{S, A, O, R}(mdp, data, FullBayesianBelief(data, hyperparam(mdp.dgp)))
+function KBanditFundingPOMDP{S, A, O, R, B}(mdp::KBanditFundingMDP{S, A, R}, data::Vector{Vector{StudyDataset}}) where {S, A, O, R <: AbstractRewardModel, B <: AbstractBelief} 
+    return KBanditFundingPOMDP{S, A, O, R, B}(mdp, data, B(data, hyperparam(mdp.dgp)))
 end
 
-function KBanditFundingPOMDP{S, A, O, R}(mdp::KBanditFundingMDP{S, A, R}) where {S, A, O, R <: AbstractRewardModel}
+function KBanditFundingPOMDP{S, A, O, R, B}(mdp::KBanditFundingMDP{S, A, R}) where {S, A, O, R <: AbstractRewardModel, B <: AbstractBelief}
     initdatasets = Vector{Vector{StudyDataset}}(undef, numprograms(mdp.initstate))
 
     for (pid, ds) in getdatasets(Base.rand(mdp.rng, mdp.initstate, mdp.studysamplesize))
         initdatasets[pid] = [ds] 
     end
     
-    return KBanditFundingPOMDP{S, A, O, R}(mdp, initdatasets)
+    return KBanditFundingPOMDP{S, A, O, R, B}(mdp, initdatasets)
 end 
 
-function KBanditFundingPOMDP{S, A, O, R}(r::R, d::Float64, ni::Int64, ss::Int64, dgp::AbstractDGP, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {S, A, O, R <: AbstractRewardModel}
+function KBanditFundingPOMDP{S, A, O, R, B}(r::R, d::Float64, ni::Int64, ss::Int64, dgp::AbstractDGP, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {S, A, O, R <: AbstractRewardModel, B <: AbstractBelief}
     mdp = KBanditFundingMDP{S, A, R}(r, d, ni, ss, dgp, rng)
 
-    return KBanditFundingPOMDP{S, A, O, R}(mdp)
+    return KBanditFundingPOMDP{S, A, O, R, B}(mdp)
 end
 
-const KBanditFundingProblem{S, A, O, R} = Union{KBanditFundingPOMDP{S, A, O, R}, KBanditFundingMDP{S, A, R}}
+const KBanditFundingProblem{S, A, O, R, B} = Union{KBanditFundingPOMDP{S, A, O, R, B}, KBanditFundingMDP{S, A, R}}
 
 mdp(m::KBanditFundingPOMDP) = m.mdp
 
@@ -135,7 +135,7 @@ POMDPs.transition(m::KBanditFundingProblem, ::Any, ::Any) = CausalStateDistribut
 POMDPs.actions(m::KBanditFundingProblem) = mdp(m).actionset
 POMDPs.actions(m::KBanditFundingProblem, ::Any) = POMDPs.actions(m)
 
-function POMDPs.reward(m::KBanditFundingProblem{S, A, O, R}, s::S, a::A) where {S, A, O, R}  
+function POMDPs.reward(m::KBanditFundingProblem{S, A, O, R, B}, s::S, a::A) where {S, A, O, R, B}  
     expectedreward = 0
 
     for (i, p) in s.programstates
@@ -150,7 +150,7 @@ rewardmodel(m::KBanditFundingProblem) = mdp(m).rewardmodel
 POMDPs.initialstate(m::KBanditFundingMDP) = POMDPTools.Deterministic(m.initstate) # CausalStateDistribution(mdp(m).dgp) 
 POMDPs.initialstate(m::KBanditFundingPOMDP) = CausalStateDistribution(mdp(m).dgp) 
 
-function POMDPs.observation(pomdp::KBanditFundingPOMDP{S, A, O, R}, s::S, a::A, sp::S) where {S, A, O, R}
+function POMDPs.observation(pomdp::KBanditFundingPOMDP{S, A, O, R, B}, s::S, a::A, sp::S) where {S, A, O, R, B}
     return MultiStudySampleDistribution(Dict(pid => StudySampleDistribution(getprogramstate(s, pid), pomdp.mdp.studysamplesize) for pid in get_evaluated_program_ids(a)))
 end
 

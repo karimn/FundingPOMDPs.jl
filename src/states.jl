@@ -20,15 +20,15 @@ Base.show(io::IO, pdgp::ProgramDGP) = Printf.@printf(io, "ProgramDGP(μ = %.2f, 
 
 getprogramid(pd::ProgramDGP) = pd.programid
 
-function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, a::AbstractFundingAction) 
-    impl = implements(a, progdgp.programid)
-
+function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, impl::Bool) 
     return expectedutility(
         r, 
         progdgp.μ + (impl ? progdgp.τ : 0), 
         sqrt(progdgp.σ^2 + progdgp.η[1]^2 + (impl ? progdgp.η[2]^2 : 0))
     )
 end
+
+expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp.programid))
 
 struct ProgramCausalState <: AbstractProgramState 
     μ::Float64

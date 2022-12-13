@@ -56,3 +56,25 @@ end
 
     return (datasets = datasets, μ_toplevel = μ_toplevel, μ_study = μ_study)
 end
+
+struct TuringModel <: AbstractBayesianModel 
+    hyperparam::Hyperparam
+end
+
+function sample(m::TuringModel, datasets::Vector{StudyDataset})
+    @pipe sim_model(m.hyperparam, datasets) |>
+        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), 500, 4) |> 
+        DataFrame(_) |>
+        select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 
+end 
+
+#=
+struct StanModel <: AbstractBayesianModel
+    hyperparam::Hypergeometric
+    model::StanSample.StampleModel
+end
+
+function StanModel(hyperparam::Hypergeometric)
+    StanModel(hyperparam, StanSample.SampleModel("funding", "../stan/sim_model.stan", num_threads = 4, ))
+end
+=#

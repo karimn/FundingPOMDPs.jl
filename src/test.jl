@@ -20,7 +20,7 @@ mdp = KBanditFundingMDP{CausalState, ImplementEvalAction, ExponentialUtilityMode
     dgp 
  )
 
-pomdp = KBanditFundingPOMDP{CausalState, ImplementEvalAction, EvalObservation, ExponentialUtilityModel}(mdp)
+pomdp = KBanditFundingPOMDP{CausalState, ImplementEvalAction, EvalObservation, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(mdp)
 
 #=
 
@@ -77,11 +77,21 @@ end
 [expectedutility(pomdp.mdp.rewardmodel, last_b, a) for a in POMDPs.actions(pomdp)]
 [expectedutility(pomdp.mdp.rewardmodel, pomdp.mdp.dgp, a) for a in POMDPs.actions(pomdp)]
 
-pomdp.mdp.dgp.programdgps[4]
-last_b.progbeliefs[4]
-last_b.datasets[4]
+pomdp.mdp.dgp.programdgps
 
-ds = last_b.datasets[4]
-bm = sim_model(test_hyperparam, ds[1:1])
+pomdp.mdp.dgp.programdgps[6]
+last_b.progbeliefs[3]
+last_b.datasets[3]
+
+expectedutility(pomdp.mdp.rewardmodel, pomdp.mdp.dgp.programdgps[3], true)
+expectedutility(pomdp.mdp.rewardmodel, last_b.progbeliefs[3], true)
+
+[expectedutility(pomdp.mdp.rewardmodel, pomdp.mdp.dgp.programdgps[pid], true) for pid in 1:10] 
+[expectedutility(pomdp.mdp.rewardmodel, last_b.progbeliefs[pid], true) for pid in 1:10]
+
+#=
+ds = last_b.datasets[6]
+bm = sim_model(test_hyperparam, ds[:])
 c = Turing.sample(bm, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)
 mean(DataFrame(c).τ_toplevel)
+=#

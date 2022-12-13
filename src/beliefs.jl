@@ -3,15 +3,17 @@ struct FullBayesianProgramBelief
     pid::Int64
 end
 
-function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, a::AbstractFundingAction)
+function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, impl::Bool)
     return mean(
         expectedutility(
             r, 
-            implements(a, pb.pid) ? pb.posterior_samples.μ_toplevel + pb.posterior_samples.τ_toplevel : pb.posterior_samples.μ_toplevel, 
-            sqrt.(pb.posterior_samples.σ_toplevel.^2 + pb.posterior_samples[:, "η_toplevel[1]"].^2 .+ (implements(a, pb.pid) ? pb.posterior_samples[:, "η_toplevel[2]"].^2 : 0.0))
+            impl ? pb.posterior_samples.μ_toplevel + pb.posterior_samples.τ_toplevel : pb.posterior_samples.μ_toplevel, 
+            sqrt.(pb.posterior_samples.σ_toplevel.^2 + pb.posterior_samples[:, "η_toplevel[1]"].^2 .+ (impl ? pb.posterior_samples[:, "η_toplevel[2]"].^2 : 0.0))
         )
     )
 end
+
+expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, a::AbstractFundingAction) = expectedutility(r, pb, implements(a, pb.pid))
 
 function Base.show(io::IO, pb::FullBayesianProgramBelief) 
     Printf.@printf(
@@ -26,37 +28,44 @@ function Base.rand(rng::Random.AbstractRNG, pb::FullBayesianProgramBelief)
     return ProgramCausalState(rng, randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
 end
 
-struct FullBayesianBelief
+struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
     datasets::Vector{Vector{StudyDataset}}
     progbeliefs::Vector{FullBayesianProgramBelief}
 end
 
-function FullBayesianBelief(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam)
+function FullBayesianBelief{M}(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam) where {M <: AbstractBayesianModel}
     samples = Vector{FullBayesianProgramBelief}(undef, length(datasets))
+    m = M(hyperparam)
 
     for pid in 1:length(samples)
-        model = sim_model(hyperparam, datasets[pid])
+        #=model = sim_model(hyperparam, datasets[pid])
         samples[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
             select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]")  |>
             FullBayesianProgramBelief(_, pid)
+            =#
+        samples[pid] = FullBayesianProgramBelief(sample(m, datasets[pid]), pid)
     end
         
-    return FullBayesianBelief(datasets, samples)
+    return FullBayesianBelief{M}(datasets, samples)
 end
 
-function FullBayesianBelief(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief)
+function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief) where {M}
     datasets = deepcopy(priorbelief.datasets) 
     progbeliefs = copy(priorbelief.progbeliefs)
+    m = M(hyperparam)
 
     for (pid, ds) in getdatasets(o)
         push!(datasets[pid], ds) 
+        #=
         model = sim_model(hyperparam, datasets[pid])
         progbeliefs[pid] = @pipe DataFrame(Turing.sample(model, Turing.NUTS(), Turing.MCMCThreads(), 500, 4)) |> 
             select(_, "μ_toplevel", "τ_toplevel", "σ_toplevel", "η_toplevel[1]", "η_toplevel[2]") |>
             FullBayesianProgramBelief(_, pid)
+            =#
+        progbeliefs[pid] = FullBayesianProgramBelief(sample(m, datasets[pid]), pid) 
     end
 
-    return FullBayesianBelief(datasets, progbeliefs)
+    return FullBayesianBelief{M}(datasets, progbeliefs)
 end
 
 function POMDPs.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
@@ -71,6 +80,6 @@ end
 
 POMDPs.initialize_belief(::FullBayesianUpdater, belief::FullBayesianBelief) = belief
 
-function POMDPs.update(updater::FullBayesianUpdater, belief_old::FullBayesianBelief, a::AbstractFundingAction, o::EvalObservation)
-    return FullBayesianBelief(a, o, updater.hyperparam, belief_old)
+function POMDPs.update(updater::FullBayesianUpdater, belief_old::FullBayesianBelief{M}, a::AbstractFundingAction, o::EvalObservation) where {M}
+    return FullBayesianBelief{M}(a, o, updater.hyperparam, belief_old)
 end

@@ -1,3 +1,5 @@
+abstract type AbstractBelief end
+abstract type AbstractBayesianModel end
 
 abstract type AbstractDGP end
 abstract type AbstractProgramDGP end
