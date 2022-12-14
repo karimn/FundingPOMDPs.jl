@@ -23,9 +23,11 @@ function Base.show(io::IO, pb::FullBayesianProgramBelief)
 end
 
 function Base.rand(rng::Random.AbstractRNG, pb::FullBayesianProgramBelief)
-    randrow = pb.posterior_samples[StatsBase.sample(rng, axes(df, 1), 1), :]
+    randrow = pb.posterior_samples[StatsBase.sample(rng, axes(pb.posterior_samples, 1), 1), :]
+    pdgp = ProgramDGP(randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
 
-    return ProgramCausalState(rng, randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
+    #return ProgramCausalState(rng, randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
+    return Base.rand(rng, pdgp) #ProgramCausalState(rng, pdgp, pb.pid)
 end
 
 struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
@@ -54,7 +56,10 @@ function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyp
 end
 
 function POMDPs.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
-    return CausalState(Dict(pid => Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs)), nothing)
+    progstates = Dict(pid => Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs))
+    progdgps = Dict(pid => dgp(ps) for (pid, ps) in progstates)
+
+    return CausalState(DGP(progdgps), progstates, nothing)
 end
 
 expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)

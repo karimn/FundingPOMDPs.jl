@@ -3,9 +3,9 @@ struct BayesianGreedyPlanner{M} <: POMDPs.Policy where M <: POMDPs.POMDP
     pomdp::M
 end
 
-POMDPs.value(p::BayesianGreedyPlanner, b::FullBayesianBelief, a::AbstractFundingAction) = expectedutility(rewardmodel(p.pomdp), b, a)
+POMDPs.value(p::BayesianGreedyPlanner, b, a::AbstractFundingAction) = expectedutility(rewardmodel(p.pomdp), b, a)
 
-function POMDPs.action(p::BayesianGreedyPlanner, b::FullBayesianBelief)
+function POMDPs.action(p::BayesianGreedyPlanner, b)
     best_reward = -Inf
     local best_action
 
@@ -21,7 +21,7 @@ function POMDPs.action(p::BayesianGreedyPlanner, b::FullBayesianBelief)
     return best_action 
 end
 
-POMDPs.value(p::BayesianGreedyPlanner, b::FullBayesianBelief) = POMDPs.value(p, b, POMDPs.action(p, b))
+POMDPs.value(p::BayesianGreedyPlanner, b) = POMDPs.value(p, b, POMDPs.action(p, b))
 
 POMDPs.updater(p::BayesianGreedyPlanner) = FullBayesianUpdater(hyperparam(p.pomdp))
 
