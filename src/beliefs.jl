@@ -26,8 +26,7 @@ function Base.rand(rng::Random.AbstractRNG, pb::FullBayesianProgramBelief)
     randrow = pb.posterior_samples[StatsBase.sample(rng, axes(pb.posterior_samples, 1), 1), :]
     pdgp = ProgramDGP(randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
 
-    #return ProgramCausalState(rng, randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
-    return Base.rand(rng, pdgp) #ProgramCausalState(rng, pdgp, pb.pid)
+    return Base.rand(rng, pdgp) 
 end
 
 struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
