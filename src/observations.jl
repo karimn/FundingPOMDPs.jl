@@ -36,7 +36,7 @@ struct MultiStudySampleDistribution <: AbstractSampleDistribution
     sds::Dict{Int64, AbstractStudySampleDistribution}
 end
 
-MultiStudySampleDistribution(sds::Vector{AbstractStudySampleDistribution})= MultiStudySampleDistribution(Dict(getprogramid(d) => d for d in sds))
+MultiStudySampleDistribution(sds::Vector{AbstractStudySampleDistribution}) = MultiStudySampleDistribution(Dict(getprogramid(d) => d for d in sds))
 Base.rand(rng::Random.AbstractRNG, msd::MultiStudySampleDistribution) = EvalObservation(Dict(pid => Base.rand(rng, d) for (pid, d) in msd.sds))
 
 function logpdf(msd::MultiStudySampleDistribution, o::EvalObservation) 
