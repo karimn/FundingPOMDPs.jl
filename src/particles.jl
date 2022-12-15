@@ -10,12 +10,27 @@ function expectedutility(m::ExponentialUtilityModel, b::CausalStateParticleBelie
     return sum(expectedutility(m, pb, a) for pb in b.progbeliefs)
 end
 
+function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBelief)
+    dfs = map(cspb.progbeliefs) do pb
+        npart = ParticleFilters.n_particles(pb)
+        df = DataFrames.DataFrame(w = Vector{Float64}(undef, npart), μ = Vector{Float64}(undef, npart), τ = Vector{Float64}(undef, npart), σ = Vector{Float64}(undef, npart), pid = Vector{Int}(undef, npart))
+
+        for i in 1:npart
+            pcs = ParticleFilters.particle(pb, i) 
+            df[i, :] = (ParticleFilters.weight(pb, i), pcs.μ, pcs.τ, pcs.σ, getprogramid(pcs))
+        end
+
+        return df
+    end
+
+    return hcat(dfs..., makeunique = true)
+end
+
 struct MultiBootstrapFilter <: POMDPs.Updater    
     filters::Vector{ParticleFilters.BasicParticleFilter} 
 end
 
 function MultiBootstrapFilter(model::KBanditFundingPOMDP, n::Int, rng::Random.AbstractRNG = Random.GLOBAL_RNG)  
-    #MultiBootstrapFilter([ParticleFilters.BootstrapFilter(model, n, rng) for i in 1:numprograms(model)])
     MultiBootstrapFilter([ParticleFilters.BasicParticleFilter(pbandit, pbandit, ParticleFilters.LowVarianceResampler(n), n, rng) for pbandit in programbandits(model)])
 end
 

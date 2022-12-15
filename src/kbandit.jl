@@ -17,6 +17,7 @@ numactions(as::KBanditActionSet) = length(as.actions)
 
 Base.iterate(as::KBanditActionSet) = iterate(as.actions)
 Base.iterate(as::KBanditActionSet, n) = iterate(as.actions, n)
+Base.getindex(as::KBanditActionSet, i) = as.actions[i]
 
 function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet) 
     actid = Base.rand(rng, 1:numactions(as))
