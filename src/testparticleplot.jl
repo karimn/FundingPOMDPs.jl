@@ -35,13 +35,21 @@ b0 = initialbelief(pomdp)
 
 function plot_belief(b, s, sp = missing)
     bdf = convert(DataFrame, b)
-    p = @df bdf scatter(:μ, :σ) 
-    scatter!(p, [s.programstates[1].μ], [s.programstates[1].σ])
-    sp === missing || scatter!(p, [sp.programstates[1].μ], [sp.programstates[1].σ])
-    xlims!(p, (-1.5, 0))
-    ylims!(p, (0.5, 1))
+    bdf.μ_treated = bdf.μ + bdf.τ
 
-    return p
+    p0 = @df bdf scatter(:μ, :σ) 
+    scatter!(p0, [s.programstates[1].μ], [s.programstates[1].σ])
+    sp === missing || scatter!(p0, [sp.programstates[1].μ], [sp.programstates[1].σ])
+    xlims!(p0, (-1.5, 0))
+    ylims!(p0, (0.6, 1))
+
+    p1 = @df bdf scatter(:μ_treated, :σ) 
+    scatter!(p1, [s.programstates[1].μ + s.programstates[1].τ], [s.programstates[1].σ])
+    sp === missing || scatter!(p1, [sp.programstates[1].μ + sp.programstates[1].τ], [sp.programstates[1].σ])
+    xlims!(p1, (-1.5, 0.5))
+    ylims!(p1, (0.6, 1))
+
+    return plot(p0, p1, layout = 2) 
 end
 
 function make_particle_anim(pomdp, updater, b0, policy)
