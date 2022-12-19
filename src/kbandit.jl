@@ -25,7 +25,7 @@ function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet)
     as.actions[actid] 
 end
 
-mutable struct KBanditFundingMDP{A <: AbstractFundingAction, R <: AbstractRewardModel} <: MDP{CausalState, A}
+struct KBanditFundingMDP{A <: AbstractFundingAction, R <: AbstractRewardModel} <: MDP{CausalState, A}
     rewardmodel::R
     discount::Float64
     nimplement::Int64
