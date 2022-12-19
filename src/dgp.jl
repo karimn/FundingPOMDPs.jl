@@ -31,13 +31,16 @@ end
 expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp.programid))
 
 struct DGP <: AbstractDGP
-    programdgps::Dict{Int64, AbstractProgramDGP}
+    #programdgps::Dict{Int64, AbstractProgramDGP}
+    programdgps::Vector{ProgramDGP}
 end
 
- function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64, ::Type{T} = ProgramDGP) where {T <: AbstractProgramDGP}
-    return DGP(Dict(i => T(hyperparam, rng, i) for i in 1:numprograms)) 
+ function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64)
+    #return DGP(Dict(i => T(hyperparam, rng, i) for i in 1:numprograms)) 
+    return DGP([ProgramDGP(hyperparam, rng, i) for i in 1:numprograms]) 
 end
 
 numprograms(dgp::DGP) = length(dgp.programdgps)
 
-expectedutility(r::ExponentialUtilityModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for (_, pdgp) in dgp.programdgps)
+#expectedutility(r::ExponentialUtilityModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for (_, pdgp) in dgp.programdgps)
+expectedutility(r::ExponentialUtilityModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for pdgp in dgp.programdgps)
