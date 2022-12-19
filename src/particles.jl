@@ -26,6 +26,12 @@ function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBel
     return hcat(dfs..., makeunique = true)
 end
 
+function POMDPs.support(b::CausalStateParticleBelief)
+    progsupports = [POMDPs.support(pb) for pb in b.progbeliefs]
+
+    return [CausalState([progstatestuple...]) for progstatestuple in zip(progsupports...)]
+end
+
 struct MultiBootstrapFilter <: POMDPs.Updater    
     filters::Vector{ParticleFilters.BasicParticleFilter} 
 end
