@@ -26,6 +26,8 @@ function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBel
     return hcat(dfs..., makeunique = true)
 end
 
+POMDPs.rand(rng::Random.AbstractRNG, b::CausalStateParticleBelief) = CausalState([POMDPs.rand(rng, pb) for pb in b.progbeliefs])
+
 function POMDPs.support(b::CausalStateParticleBelief)
     progsupports = [POMDPs.support(pb) for pb in b.progbeliefs]
 
