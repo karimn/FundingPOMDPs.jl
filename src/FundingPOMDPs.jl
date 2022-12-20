@@ -42,7 +42,6 @@ export AbstractFundingAction
 export ImplementEvalAction
 export AbstractActionSet, AbstractFundingAction
 export KBanditFundingMDP, KBanditFundingPOMDP, KBanditActionSet
-#export discount, isterminal, transition, actions, reward, observation, initialstate, rand 
 export numprograms, initialbelief, rewardmodel
 export FullBayesianBelief, FullBayesianUpdater
 export BayesianGreedySolver, BayesianGreedyPlanner
