@@ -1,6 +1,12 @@
 struct CausalStateParticleBelief <: AbstractBelief
     progbeliefs::Vector{ParticleFilters.AbstractParticleBelief}
+    bayesian_origin::Union{Nothing, FullBayesianBelief}
+
+    function CausalStateParticleBelief(progbeliefs::Vector{PB}, origin::Union{Nothing, FullBayesianBelief} = nothing) where PB <: ParticleFilters.AbstractParticleBelief 
+        return new(progbeliefs, origin)
+    end
 end
+
 
 function expectedutility(m::ExponentialUtilityModel, b::ParticleFilters.AbstractParticleBelief, a::AbstractFundingAction)
     return mean(expectedutility(m, ParticleFilters.particle(b, i), a) for i in ParticleFilters.n_particles(b))
@@ -34,12 +40,18 @@ function POMDPs.support(b::CausalStateParticleBelief)
     return [CausalState([progstatestuple...]) for progstatestuple in zip(progsupports...)]
 end
 
+original_bayesian_beliefs(b::CausalStateParticleBelief) = b.bayesian_origin
+
 struct MultiBootstrapFilter <: POMDPs.Updater    
-    filters::Vector{ParticleFilters.BasicParticleFilter} 
+    filters::Vector{ParticleFilters.BasicParticleFilter}
+    bayes_updater::FullBayesianUpdater 
 end
 
-function MultiBootstrapFilter(model::KBanditFundingPOMDP, n::Int, rng::Random.AbstractRNG = Random.GLOBAL_RNG)  
-    MultiBootstrapFilter([ParticleFilters.BasicParticleFilter(pbandit, pbandit, ParticleFilters.LowVarianceResampler(n), n, rng) for pbandit in programbandits(model)])
+function MultiBootstrapFilter(model::KBanditFundingPOMDP, n::Int, fbu::FullBayesianUpdater, rng::Random.AbstractRNG = Random.GLOBAL_RNG)  
+    return MultiBootstrapFilter(
+        [ParticleFilters.BasicParticleFilter(pbandit, pbandit, ParticleFilters.LowVarianceResampler(n), n, rng) for pbandit in programbandits(model)],
+        fbu
+    )
 end
 
 function POMDPs.update(updater::MultiBootstrapFilter, belief_old::CausalStateParticleBelief, a::AbstractFundingAction, o::EvalObservation)
@@ -52,6 +64,20 @@ function POMDPs.update(updater::MultiBootstrapFilter, belief_old::CausalStatePar
     return CausalStateParticleBelief(new_progbeliefs)
 end
 
+"""
+    POMDPTools.update_info(updater::MultiBootstrapFilter, belief_old::CausalStateParticleBelief, a::AbstractFundingAction, o::EvalObservation)
+
+    I'm using this method to capture updating when making actual step updates, not planning updates. Step updates mean we get a new dataset from the 
+    _actual_ state and update our Bayesian beliefs. The planner would directly call the update() methods while the simulation code would call
+    update_info() for every step.
+"""
+function POMDPTools.update_info(updater::MultiBootstrapFilter, belief_old::CausalStateParticleBelief, a::AbstractFundingAction, o::EvalObservation)
+    updated_bayes_b = POMDPs.update(updater.bayes_updater, original_bayesian_beliefs(belief_old), a, o)
+    updated_particle_b = POMDPs.initialize_belief(updater, updated_bayes_b)
+
+    return updated_particle_b, nothing
+end
+
 POMDPs.initialize_belief(::MultiBootstrapFilter, belief::CausalStateParticleBelief) = belief
 
 function POMDPs.initialize_belief(updater::MultiBootstrapFilter, belief::FullBayesianBelief)
@@ -59,5 +85,5 @@ function POMDPs.initialize_belief(updater::MultiBootstrapFilter, belief::FullBay
         POMDPs.initialize_belief(pf, pb)
     end 
 
-    return CausalStateParticleBelief(partbs)
+    return CausalStateParticleBelief(partbs, belief)
 end 
