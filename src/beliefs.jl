@@ -55,10 +55,10 @@ function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyp
 end
 
 function POMDPs.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
-    progstates = Dict(pid => Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs))
-    progdgps = Dict(pid => dgp(ps) for (pid, ps) in progstates)
+    progstates = [Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs)]
+    progdgps = [dgp(ps) for ps in progstates]
 
-    return CausalState(DGP(progdgps), progstates, nothing)
+    return CausalState(DGP(progdgps), progstates)
 end
 
 expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)

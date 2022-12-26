@@ -6,24 +6,20 @@ struct ProgramCausalState <: AbstractProgramState
     σ::Float64
 
     programid::Int64
-
-    prevprogstate::Union{Nothing, AbstractProgramState}
 end
 
 ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
 
-function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP, prev::Union{Nothing, AbstractProgramState} = nothing)   
+function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP)
     μ_study = pd.μ + Base.rand(rng, Distributions.Normal(0, pd.η[1]))
     τ_study = pd.τ + Base.rand(rng, Distributions.Normal(0, pd.η[2]))
 
-    return ProgramCausalState(pd, μ_study, τ_study, pd.σ, pd.programid, prev)
+    return ProgramCausalState(pd, μ_study, τ_study, pd.σ, pd.programid)
 end
 
 dgp(ps::ProgramCausalState) = ps.progdgp
 
 expectedutility(m::ExponentialUtilityModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs.μ + (implements(a, pcs.programid) ? pcs.τ : 0), pcs.σ)
-
-getprevprogstate(ps::ProgramCausalState) = ps.prevprogstate
 
 getprogramid(ps::ProgramCausalState) = ps.programid
 
@@ -63,36 +59,32 @@ end
 
 transition(pcs::ProgramCausalState, a::AbstractFundingAction) = ProgramCausalStateDistribution(dgp(pcs), pcs)
 
-Base.rand(rng::Random.AbstractRNG, pcsd::ProgramCausalStateDistribution) = Base.rand(rng, pcsd.pdgp, pcsd.prev)
+Base.rand(rng::Random.AbstractRNG, pcsd::ProgramCausalStateDistribution) = Base.rand(rng, pcsd.pdgp) #, pcsd.prev)
 
 struct CausalState <: AbstractState 
     dgp::DGP
-    programstates::Dict{Int64, AbstractProgramState}
-
-    prevstate::Union{Nothing, AbstractState}
+    programstates::Vector{ProgramCausalState}
 end
+
+CausalState(progstates::Vector{ProgramCausalState}) = CausalState(DGP([dgp(ps) for ps in progstates]), progstates)
 
 dgp(s::CausalState) = s.dgp
 
-function Base.rand(rng::Random.AbstractRNG, dgp::DGP, prev::Union{Nothing, AbstractState} = nothing) 
-    return CausalState(
-        dgp,
-        Dict(pid => Base.rand(rng, pdgp, prev === nothing ? nothing : getprogramstate(prev, pid)) for (pid, pdgp) in dgp.programdgps), 
-        prev
-    )
+function Base.rand(rng::Random.AbstractRNG, dgp::DGP)
+    return CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps])
 end
 
-Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation(Dict(pid => Base.rand(rng, ps, samplesize) for (pid, ps) in s.programstates))
+Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation(Dict(getprogramid(ps) => Base.rand(rng, ps, samplesize) for ps in s.programstates))
 
-Base.iterate(s::CausalState) = Base.iterate(values(s.programstates))
-Base.iterate(s::CausalState, n) = Base.iterate(values(s.programstates), n)
+Base.iterate(s::CausalState) = Base.iterate(s.programstates)
+Base.iterate(s::CausalState, n) = Base.iterate(s.programstates, n)
 Base.length(s::CausalState) = length(s.programstates)
 
 numprograms(s::CausalState) = length(s.programstates)
 
 getprogramstate(s::CausalState, id) = s.programstates[id]
 
-expectedutility(m::ExponentialUtilityModel, s::CausalState, a::AbstractFundingAction) = StatsBase.sum([expectedutility(m, progstate, a) for (_, progstate) in s.programstates])
+expectedutility(m::ExponentialUtilityModel, s::CausalState, a::AbstractFundingAction) = StatsBase.sum([expectedutility(m, progstate, a) for progstate in s.programstates])
 
 expectedutility(m::ExponentialUtilityModel, pc::ParticleFilters.ParticleCollection{CausalState}, a::AbstractFundingAction) = StatsBase.mean([expectedutility(m, s, a) for s in ParticleFilters.particles(pc)])
 
@@ -101,9 +93,8 @@ struct CausalStateDistribution
     prev::Union{Nothing, CausalState}
 end
 
-Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp, sd.prev) 
+Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp) 
 
 function transition(s::CausalState, a::AbstractFundingAction)
-    #return CausalState(Dict(pid => transition(ps, a, rng) for (pid, ps) in s.programstates), s)
     return CausalStateDistribution(s.dgp, s)
 end

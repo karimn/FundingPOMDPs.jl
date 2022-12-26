@@ -9,7 +9,7 @@ function POMDPs.action(p::BayesianGreedyPlanner, b)
     best_reward = -Inf
     local best_action
 
-    for a in actions(p.pomdp)
+    for a in POMDPs.actions(p.pomdp)
         current_reward = POMDPs.value(p, b, a) 
 
         if current_reward > best_reward
