@@ -19,15 +19,19 @@ end
 
 const RNG = Random.MersenneTwister()
 const NUM_PROGRAMS = 5 
-const NUM_SIM = 10 
+const NUM_SIM = 2 
 const NUM_SIM_STEPS = 10 
 const NUM_FILTER_PARTICLES = 1_000
 
-test_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
+dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
+inference_hyperparam = Hyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.5, sigma_sd = 4.0, eta_sd = [0.2, 0.2, 0.2])
+
+sep_impl_eval_actionset = SeparateImplementAndEvalActionSet(NUM_PROGRAMS, SeparateImplementEvalAction)
+select_subset_actionset = SelectProgramSubsetActionSet(NUM_PROGRAMS, 1, ImplementOnlyAction)
 
 dpfdpw_solver = MCTS.DPWSolver(
     depth = 10,
-    #exploration_constant = 1,
+    exploration_constant = 0.0,
     n_iterations = 500,
     enable_action_pw = false,  
     k_state = 4.5,
@@ -44,20 +48,20 @@ pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
 @threads for sim_index in 1:NUM_SIM
-    dgp = DGP(test_hyperparam, RNG, NUM_PROGRAMS)
+    dgp = DGP(dgp_hyperparam, RNG, NUM_PROGRAMS)
 
-    pftdpw_mdp = KBanditFundingMDP{ImplementEvalAction, ExponentialUtilityModel}(
+    pftdpw_mdp = KBanditFundingMDP{SeparateImplementEvalAction, ExponentialUtilityModel}(
         ExponentialUtilityModel(1.0),
         0.95,
-        1,
         50,
-        test_hyperparam,
-        dgp
+        inference_hyperparam,
+        dgp,
+        sep_impl_eval_actionset 
     )
 
-    pftdpw_pomdp = KBanditFundingPOMDP{ImplementEvalAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(pftdpw_mdp)
+    pftdpw_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(pftdpw_mdp)
 
-    bayes_updater = FullBayesianUpdater(test_hyperparam)
+    bayes_updater = FullBayesianUpdater(inference_hyperparam)
     particle_updater = MultiBootstrapFilter(pftdpw_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
     bayes_b = initialbelief(pftdpw_pomdp)
     particle_b = POMDPs.initialize_belief(particle_updater, bayes_b)
@@ -70,10 +74,10 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
     greedy_mdp = KBanditFundingMDP{ImplementOnlyAction, ExponentialUtilityModel}(
         ExponentialUtilityModel(1.0),
         0.95,
-        1,
         50,
-        test_hyperparam,
-        dgp
+        inference_hyperparam,
+        dgp,
+        select_subset_actionset
     )
 
     greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(greedy_mdp)
