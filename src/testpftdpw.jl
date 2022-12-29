@@ -26,10 +26,11 @@ const NUM_FILTER_PARTICLES = 1_000
 dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
 inference_hyperparam = Hyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.5, sigma_sd = 4.0, eta_sd = [0.2, 0.2, 0.2])
 
-sep_impl_eval_actionset_factory = SeparateImplementAndEvalActionSetFactory(NUM_PROGRAMS, SeparateImplementEvalAction)
-select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRAMS, 1, ImplementOnlyAction)
-
 util_model = ExponentialUtilityModel(1.0)
+
+sep_impl_eval_actionset_factory = SeparateImplementAndEvalActionSetFactory(NUM_PROGRAMS)
+select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRAMS, 1)
+explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1, util_model)
 
 dpfdpw_solver = MCTS.DPWSolver(
     depth = 10,
