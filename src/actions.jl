@@ -40,5 +40,3 @@ evaluates(a::SeparateImplementEvalAction, i::Int64) = in(i, a.eval_programs)
 get_evaluated_program_ids(a::SeparateImplementEvalAction) = a.eval_programs
 
 Base.show(io::IO, a::SeparateImplementEvalAction) = print(io, "SeparateImplementEvalAction([$(a.implement_programs), $(a.eval_programs)])")  
-
-Base.length(as::SeparateImplementEvalAction) = throw(ErrorException("invalid call for this action type")) 
