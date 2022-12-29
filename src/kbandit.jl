@@ -1,58 +1,22 @@
 
-struct KBanditActionSet{A} <: AbstractActionSet where A <: AbstractFundingAction
-    actions::Vector{A}
-end
-
-function SelectProgramSubsetActionSet(nprograms, nimplement, ::Type{A}) where A <: AbstractFundingAction
-    actionlist = map(Combinatorics.combinations(1:nprograms, nimplement)) do programidx
-        A(programidx)
-    end
-
-    push!(actionlist, A()) # Add a do-nothing action
-
-    return KBanditActionSet(actionlist)
-end
-
-function SeparateImplementAndEvalActionSet(nprograms, ::Type{A}) where A <: AbstractFundingAction
-    actionlist = map(Combinatorics.permutations(1:nprograms, 2)) do programidx
-        A(programidx[1:1], programidx[2:2])
-    end
-
-    sameproglist = [A([programidx], [programidx]) for programidx in 1:nprograms]
-
-    return KBanditActionSet(vcat(actionlist, sameproglist))
-end
-
-numactions(as::KBanditActionSet) = length(as.actions)
-
-Base.iterate(as::KBanditActionSet) = iterate(as.actions)
-Base.iterate(as::KBanditActionSet, n) = iterate(as.actions, n)
-Base.getindex(as::KBanditActionSet, i) = as.actions[i]
-
-function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet) 
-    actid = Base.rand(rng, 1:numactions(as))
-
-    as.actions[actid] 
-end
-
 struct KBanditFundingMDP{A <: AbstractFundingAction, R <: AbstractRewardModel} <: MDP{CausalState, A}
     rewardmodel::R
     discount::Float64
     studysamplesize::Int64
     inference_hyperparam::Hyperparam
     dgp::AbstractDGP
-    actionset::KBanditActionSet{A}
+    #actionset::KBanditActionSet{A}
+    actionset_factory::AbstractActionSetFactory{A}
     rng::Random.AbstractRNG
 
     curr_state::CausalState
 end
 
-function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, as::KBanditActionSet{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel}
-    #ni <= numprograms(dgp) || throw(ArgumentError("number of programs to implement greater than number of programs"))
-
+#function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, as::KBanditActionSet{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel}
+function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel}
     curr_state = Base.rand(rng, dgp)
 
-    return KBanditFundingMDP{A, R}(r, d, ss, inference_hyperparam, dgp, as, rng, curr_state)
+    return KBanditFundingMDP{A, R}(r, d, ss, inference_hyperparam, dgp, asf, rng, curr_state)
 end 
 
 mdp(m::KBanditFundingMDP) = m 
@@ -76,8 +40,9 @@ function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}) where {A <: 
     return KBanditFundingPOMDP{A, R, B}(mdp, initdatasets)
 end 
 
-function KBanditFundingPOMDP{A, R, B}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, as::KBanditActionSet{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel, B <: AbstractBelief}
-    mdp = KBanditFundingMDP{A, R}(r, d, ss, dgp, as, rng)
+#function KBanditFundingPOMDP{A, R, B}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, as::KBanditActionSet{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel, B <: AbstractBelief}
+function KBanditFundingPOMDP{A, R, B}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel, B <: AbstractBelief}
+    mdp = KBanditFundingMDP{A, R}(r, d, ss, dgp, asf, rng)
 
     return KBanditFundingPOMDP{A, R, B}(mdp)
 end
@@ -109,8 +74,9 @@ POMDPs.transition(m::KBanditFundingProblem, s::CausalState, a::AbstractFundingAc
 
 POMDPs.transition(m::ProgramBanditWrapper, s::ProgramCausalState, a::AbstractFundingAction) = transition(s, a)  #CausalStateDistribution(mdp(m).dgp) 
 
-POMDPs.actions(m::KBanditFundingProblem) = mdp(m).actionset
-POMDPs.actions(m::KBanditFundingProblem, ::Any) = POMDPs.actions(m)
+POMDPs.actions(m::KBanditFundingProblem) = actions(mdp(m).actionset_factory)
+POMDPs.actions(m::KBanditFundingProblem, s::CausalState) = actions(mdp(m).actionset_factory, s)
+POMDPs.actions(m::KBanditFundingPOMDP{A, R, B}, b::B) where {A <: AbstractFundingAction, R, B <: AbstractBelief} = actions(mdp(m).actionset_factory, b)
 
 POMDPs.reward(m::KBanditFundingProblem{A, R, B}, s::CausalState, a::A) where {A, R, B} = expectedutility(rewardmodel(m), s, a)
 

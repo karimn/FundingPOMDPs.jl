@@ -19,7 +19,7 @@ end
 
 dgp(ps::ProgramCausalState) = ps.progdgp
 
-expectedutility(m::ExponentialUtilityModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs.μ + (implements(a, pcs.programid) ? pcs.τ : 0), pcs.σ)
+expectedutility(m::ExponentialUtilityModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs.μ + (implements(a, pcs) ? pcs.τ : 0), pcs.σ)
 
 getprogramid(ps::ProgramCausalState) = ps.programid
 

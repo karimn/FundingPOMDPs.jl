@@ -13,7 +13,7 @@ function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBeli
     )
 end
 
-expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, a::AbstractFundingAction) = expectedutility(r, pb, implements(a, pb.pid))
+expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, a::AbstractFundingAction) = expectedutility(r, pb, implements(a, pb))
 
 function Base.show(io::IO, pb::FullBayesianProgramBelief) 
     Printf.@printf(

@@ -1,3 +1,7 @@
+implements(a::AbstractFundingAction, pb::FullBayesianProgramBelief) = implements(a, pb.pid)
+implements(a::AbstractFundingAction, progdgp::ProgramDGP) = implements(a, progdgp.programid)
+implements(a::AbstractFundingAction, pcs::ProgramCausalState) = implements(a, pcs.programid)
+
 @with_kw struct ImplementEvalAction <: AbstractFundingAction
     implement_eval_programs::BitSet = BitSet() 
 end
