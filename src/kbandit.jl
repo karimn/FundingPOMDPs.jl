@@ -69,6 +69,7 @@ initialbelief(m::KBanditFundingPOMDP) = m.curr_belief
 POMDPs.discount(m::KBanditFundingProblem) = mdp(m).discount
 
 POMDPs.isterminal(m::KBanditFundingProblem) = false 
+POMDPs.isterminal(m::POMDPTools.GenerativeBeliefMDP, b::AbstractBelief) = false  # So we don't have to look at the entire support
 
 POMDPs.transition(m::KBanditFundingProblem, s::CausalState, a::AbstractFundingAction) = transition(s, a)  #CausalStateDistribution(mdp(m).dgp) 
 
@@ -76,7 +77,7 @@ POMDPs.transition(m::ProgramBanditWrapper, s::ProgramCausalState, a::AbstractFun
 
 POMDPs.actions(m::KBanditFundingProblem) = actions(mdp(m).actionset_factory)
 POMDPs.actions(m::KBanditFundingProblem, s::CausalState) = actions(mdp(m).actionset_factory, s)
-POMDPs.actions(m::KBanditFundingPOMDP{A, R, B}, b::B) where {A <: AbstractFundingAction, R, B <: AbstractBelief} = actions(mdp(m).actionset_factory, b)
+POMDPs.actions(m::KBanditFundingPOMDP{A, R, B}, b::AbstractBelief) where {A <: AbstractFundingAction, R, B <: AbstractBelief} = actions(mdp(m).actionset_factory, b)
 
 POMDPs.reward(m::KBanditFundingProblem{A, R, B}, s::CausalState, a::A) where {A, R, B} = expectedutility(rewardmodel(m), s, a)
 
