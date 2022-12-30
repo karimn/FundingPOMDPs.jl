@@ -42,7 +42,8 @@ export ExponentialUtilityModel, expectedutility
 export AbstractFundingAction 
 export ImplementEvalAction, ImplementOnlyAction, SeparateImplementEvalAction
 export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
-export KBanditFundingMDP, KBanditFundingPOMDP, KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
+export KBanditFundingMDP, KBanditFundingPOMDP
+export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
 export numprograms, initialbelief, rewardmodel, hyperparam
 export FullBayesianBelief, FullBayesianUpdater
 export BayesianGreedySolver, BayesianGreedyPlanner
