@@ -64,6 +64,7 @@ end
 
 function actions(asf::ExploreOnlyActionSetFactory, s::Union{CausalState, AbstractBelief})
     max_eu = -Inf
+    max_actionset = nothing
 
     for (impl_action, impl_eval_actionset) in asf.actiondict
         current_eu = expectedutility(asf.rewardmodel, s, impl_action) 
