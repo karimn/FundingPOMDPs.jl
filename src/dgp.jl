@@ -2,7 +2,6 @@ struct ProgramDGP <: AbstractProgramDGP
     μ::Float64
     τ::Float64
     σ::Float64
-    #η::Tuple{Float64, Float64}
     η_μ::Float64
     η_τ::Float64
 
@@ -13,11 +12,9 @@ function ProgramDGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, programid::
     μ = Base.rand(rng, Distributions.Normal(0, hyperparam.mu_sd))
     τ = Base.rand(rng, Distributions.Normal(hyperparam.tau_mean, hyperparam.tau_sd))
     σ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.sigma_sd), 0, Inf))
-    #η = [Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[i]), 0, Inf)) for i in 1:2]
     η_μ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[1]), 0, Inf))
     η_τ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[2]), 0, Inf))
 
-    #ProgramDGP(μ, τ, σ, Tuple{Float64, Float64}(η), programid) 
     ProgramDGP(μ, τ, σ, η_μ, η_τ, programid) 
 end
 

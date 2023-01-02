@@ -59,11 +59,15 @@ end
 
 struct TuringModel <: AbstractBayesianModel 
     hyperparam::Hyperparam
+    iter
+    chains
+
+    TuringModel(hyperparam::Hyperparam, iter = 500, chains = 4) = new(hyperparam, iter, chains)
 end
 
 function sample(m::TuringModel, datasets::Vector{StudyDataset})
     @pipe sim_model(m.hyperparam, datasets) |>
-        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), 500, 4) |> 
+        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains) |> 
         DataFrame(_) |>
         select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 
 end 

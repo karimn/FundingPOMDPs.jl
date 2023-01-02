@@ -19,23 +19,22 @@ end
 
 const RNG = Random.MersenneTwister()
 const NUM_PROGRAMS = 5 
-const NUM_SIM = 3 
-const NUM_SIM_STEPS = 5 
-const NUM_FILTER_PARTICLES = 1_000
+const NUM_SIM = 10 
+const NUM_SIM_STEPS = 10 
+const NUM_FILTER_PARTICLES = 2_000
 
 dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
 inference_hyperparam = Hyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.5, sigma_sd = 4.0, eta_sd = [0.2, 0.2, 0.2])
 
 util_model = ExponentialUtilityModel(1.0)
 
-#sep_impl_eval_actionset_factory = SeparateImplementAndEvalActionSetFactory(NUM_PROGRAMS)
 select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRAMS, 1)
 explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1, util_model)
 
 dpfdpw_solver = MCTS.DPWSolver(
     depth = 10,
     exploration_constant = 0.0,
-    n_iterations = 200,
+    n_iterations = 100,
     enable_action_pw = false,  
     k_state = 4.5,
     alpha_state = 1/10.0,
@@ -52,17 +51,19 @@ bayes_updater = FullBayesianUpdater(inference_hyperparam, RNG)
 pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
-@threads for sim_index in 1:NUM_SIM
-#for sim_index in 1:NUM_SIM
-    dgp = DGP(dgp_hyperparam, RNG, NUM_PROGRAMS)
+#@threads for sim_index in 1:NUM_SIM
+for sim_index in 1:NUM_SIM
+    dgp_rng = Random.MersenneTwister()
+
+    pftdpw_dgp = DGP(dgp_hyperparam, dgp_rng, NUM_PROGRAMS)
+    greedy_dgp = deepcopy(pftdpw_dgp)
 
     pftdpw_mdp = KBanditFundingMDP{SeparateImplementEvalAction, ExponentialUtilityModel}(
         util_model,
         0.95,
         50,
         inference_hyperparam,
-        dgp,
-        #sep_impl_eval_actionset_factory 
+        pftdpw_dgp,
         explore_only_actionset_factory
     )
 
@@ -72,25 +73,28 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
     bayes_b = initialbelief(pftdpw_pomdp)
     particle_b = POMDPs.initialize_belief(particle_updater, bayes_b)
 
-    belief_mdp = MCTS.GenerativeBeliefMDP(pftdpw_pomdp, particle_updater)
+    belief_mdp = MCTS.GenerativeBeliefMDP(deepcopy(pftdpw_pomdp), particle_updater)
     pftdpw_planner = POMDPs.solve(dpfdpw_solver, belief_mdp)
-
-    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, rng = RNG, max_steps = NUM_SIM_STEPS)
 
     greedy_mdp = KBanditFundingMDP{ImplementOnlyAction, ExponentialUtilityModel}(
         util_model,
         0.95,
         50,
         inference_hyperparam,
-        dgp,
-        select_subset_actionset_factory
+        greedy_dgp,
+        select_subset_actionset_factory;
+        curr_state = pftdpw_mdp.curr_state
     )
 
     greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(greedy_mdp, initialbelief(pftdpw_pomdp))
 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 
-    greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, rng = RNG, max_steps = NUM_SIM_STEPS)
+    greedy_sim_rng = Random.MersenneTwister()
+    pftdpw_sim_rng = copy(greedy_sim_rng)
+
+    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
+    greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
 end
 
 @everywhere function get_sim_data(sim::POMDPTools.Sim, hist::POMDPTools.SimHistory)
@@ -109,23 +113,3 @@ end
 
 greedy_sim_data = POMDPTools.run_parallel(get_sim_data, greedy_sims; show_progress = true)
 pftdpw_sim_data = POMDPTools.run_parallel(get_sim_data, pftdpw_sims; show_progress = true) 
-
-#=
-s = rand(RNG, POMDPs.initialstate(mdp))
-a = POMDPs.action(pftdpw, particle_b)
-
-sp, o = @POMDPs.gen(:sp, :o)(pomdp, s, a, RNG)
-
-bayes_bp = POMDPs.update(bayes_updater, bayes_b, a, o)
-
-
-[expectedutility(pomdp.mdp.rewardmodel, pomdp.mdp.dgp, a) for a in POMDPs.actions(pomdp)]
-
-gs = BayesianGreedySolver()
-gp = POMDPs.solve(gs, pomdp)
-
-hr = POMDPSimulators.HistoryRecorder(max_steps = 10)
-history = POMDPs.simulate(hr, pomdp, gp, bsf, b0)
-
-[expectedutility(pomdp.mdp.rewardmodel, history[1].bp, a) for a in POMDPs.actions(pomdp)]
-=#
