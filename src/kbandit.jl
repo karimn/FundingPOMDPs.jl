@@ -5,14 +5,12 @@ struct KBanditFundingMDP{A <: AbstractFundingAction, R <: AbstractRewardModel} <
     studysamplesize::Int64
     inference_hyperparam::Hyperparam
     dgp::AbstractDGP
-    #actionset::KBanditActionSet{A}
     actionset_factory::AbstractActionSetFactory{A}
     rng::Random.AbstractRNG
 
     curr_state::CausalState
 end
 
-#function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, as::KBanditActionSet{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel}
 function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel}
     curr_state = Base.rand(rng, dgp)
 
@@ -27,7 +25,7 @@ struct KBanditFundingPOMDP{A <: AbstractFundingAction, R <: AbstractRewardModel,
 end
 
 function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}, data::Vector{Vector{StudyDataset}}) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief} 
-    return KBanditFundingPOMDP{A, R, B}(mdp, B(data, mdp.inference_hyperparam))
+    return KBanditFundingPOMDP{A, R, B}(mdp, B(data, mdp.inference_hyperparam, mdp.rng))
 end
 
 function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief}
@@ -40,7 +38,6 @@ function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}) where {A <: 
     return KBanditFundingPOMDP{A, R, B}(mdp, initdatasets)
 end 
 
-#function KBanditFundingPOMDP{A, R, B}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, as::KBanditActionSet{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel, B <: AbstractBelief}
 function KBanditFundingPOMDP{A, R, B}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel, B <: AbstractBelief}
     mdp = KBanditFundingMDP{A, R}(r, d, ss, dgp, asf, rng)
 
