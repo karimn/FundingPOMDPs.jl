@@ -9,13 +9,12 @@ struct KBanditFundingMDP{A <: AbstractFundingAction, R <: AbstractRewardModel} <
     rng::Random.AbstractRNG
 
     curr_state::CausalState
+
+    function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}; rng::Random.AbstractRNG = Random.GLOBAL_RNG, curr_state::CausalState = Base.rand(rng, dgp)) where {A, R <: AbstractRewardModel}
+        return new{A, R}(r, d, ss, inference_hyperparam, dgp, asf, rng, curr_state)
+    end 
 end
 
-function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel}
-    curr_state = Base.rand(rng, dgp)
-
-    return KBanditFundingMDP{A, R}(r, d, ss, inference_hyperparam, dgp, asf, rng, curr_state)
-end 
 
 mdp(m::KBanditFundingMDP) = m 
 
