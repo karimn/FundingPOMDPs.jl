@@ -64,14 +64,17 @@ Base.rand(rng::Random.AbstractRNG, pcsd::ProgramCausalStateDistribution) = Base.
 struct CausalState <: AbstractState 
     dgp::DGP
     programstates::Vector{ProgramCausalState}
+    prev::Union{CausalState, Nothing}
+
+    CausalState(dgp::DGP, ps::Vector{ProgramCausalState}, prev::Union{CausalState, Nothing} = nothing) = new(dgp, ps, prev)
 end
 
 CausalState(progstates::Vector{ProgramCausalState}) = CausalState(DGP([dgp(ps) for ps in progstates]), progstates)
 
 dgp(s::CausalState) = s.dgp
 
-function Base.rand(rng::Random.AbstractRNG, dgp::DGP)
-    return CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps])
+function Base.rand(rng::Random.AbstractRNG, dgp::DGP, prev::Union{CausalState, Nothing} = nothing)
+    return CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps], prev)
 end
 
 Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation(Dict(getprogramid(ps) => Base.rand(rng, ps, samplesize) for ps in s.programstates))
@@ -93,7 +96,7 @@ struct CausalStateDistribution
     prev::Union{Nothing, CausalState}
 end
 
-Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp) 
+Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp, sd.prev) 
 
 function transition(s::CausalState, a::AbstractFundingAction)
     return CausalStateDistribution(s.dgp, s)
