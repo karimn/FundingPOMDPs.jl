@@ -40,3 +40,20 @@ evaluates(a::SeparateImplementEvalAction, i::Int64) = in(i, a.eval_programs)
 get_evaluated_program_ids(a::SeparateImplementEvalAction) = a.eval_programs
 
 Base.show(io::IO, a::SeparateImplementEvalAction) = print(io, "SeparateImplementEvalAction([$(a.implement_programs), $(a.eval_programs)])")  
+
+#=struct ExploreAction <: AbstractFundingAction
+    eval_programs::BitSet 
+    implement_actionset::AbstractActionSet
+end
+
+ExploreAction(pids::Vector{Int64}, impl_as::AbstractActionSet) = ExploreAction(BitSet(pids), impl_as)
+
+evaluates(a::ExploreAction, i::Int64) = in(i, a.eval_programs) 
+get_evaluated_program_ids(a::ExploreAction) = a.implement_eval_programs
+
+function expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::ExploreAction) 
+    sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
+end
+
+Base.show(io::IO, a::ImplementEvalAction) = print(io, "ImplementEvalAction([$(a.implement_eval_programs)])")  
+=#
