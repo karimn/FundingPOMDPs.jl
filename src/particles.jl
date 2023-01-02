@@ -8,13 +8,9 @@ struct CausalStateParticleBelief <: AbstractBelief
 end
 
 
-function expectedutility(m::ExponentialUtilityModel, b::ParticleFilters.AbstractParticleBelief, a::AbstractFundingAction)
-    return mean(expectedutility(m, ParticleFilters.particle(b, i), a) for i in ParticleFilters.n_particles(b))
-end
+expectedutility(m::ExponentialUtilityModel, b::ParticleFilters.AbstractParticleBelief, a::AbstractFundingAction) = mean(expectedutility(m, ParticleFilters.particle(b, i), a) for i in ParticleFilters.n_particles(b))
 
-function expectedutility(m::ExponentialUtilityModel, b::CausalStateParticleBelief, a::AbstractFundingAction)
-    return sum(expectedutility(m, pb, a) for pb in b.progbeliefs)
-end
+expectedutility(m::ExponentialUtilityModel, b::CausalStateParticleBelief, a::AbstractFundingAction) = sum(expectedutility(m, pb, a) for pb in b.progbeliefs)
 
 function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBelief)
     dfs = map(cspb.progbeliefs) do pb
@@ -32,7 +28,7 @@ function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBel
     return hcat(dfs..., makeunique = true)
 end
 
-POMDPs.rand(rng::Random.AbstractRNG, b::CausalStateParticleBelief) = CausalState([POMDPs.rand(rng, pb) for pb in b.progbeliefs])
+Base.rand(rng::Random.AbstractRNG, b::CausalStateParticleBelief) = CausalState([Base.rand(rng, pb) for pb in b.progbeliefs])
 
 function POMDPs.support(b::CausalStateParticleBelief)
     progsupports = [POMDPs.support(pb) for pb in b.progbeliefs]
@@ -81,9 +77,14 @@ end
 POMDPs.initialize_belief(::MultiBootstrapFilter, belief::CausalStateParticleBelief) = belief
 
 function POMDPs.initialize_belief(updater::MultiBootstrapFilter, belief::FullBayesianBelief)
-     partbs = map(updater.filters, belief.progbeliefs) do pf, pb
+#    test = POMDPs.initialize_belief(updater.filters[1], belief.progbeliefs[1])
+
+     #=partbs = map(updater.filters, belief.progbeliefs) do pf, pb
         POMDPs.initialize_belief(pf, pb)
-    end 
+    end=# 
+
+    partbs = [ParticleFilters.ParticleCollection(state_samples(pb)) for pb in belief.progbeliefs]
 
     return CausalStateParticleBelief(partbs, belief)
 end 
+

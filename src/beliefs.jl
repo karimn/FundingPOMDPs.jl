@@ -1,9 +1,17 @@
 struct FullBayesianProgramBelief
     posterior_samples::DataFrame
+    state_samples::Vector{ProgramCausalState}
     pid::Int64
+
+    function FullBayesianProgramBelief(samples::DataFrame, pid::Int64, rng::Random.AbstractRNG)
+        pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"], pid)
+        return new(samples, Base.rand.(rng, pdgps), pid)
+    end
 end
 
-function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, impl::Bool)
+expectedutility(r::ExponentialUtilityModel, bpb::FullBayesianProgramBelief, a::AbstractFundingAction) = mean(expectedutility(r, s, a) for s in bpb.state_samples)
+
+#=function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, impl::Bool)
     return mean(
         expectedutility(
             r, 
@@ -12,8 +20,9 @@ function expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBeli
         )
     )
 end
+=#
 
-expectedutility(r::ExponentialUtilityModel, pb::FullBayesianProgramBelief, a::AbstractFundingAction) = expectedutility(r, pb, implements(a, pb))
+state_samples(bpb::FullBayesianProgramBelief) = bpb.state_samples
 
 function Base.show(io::IO, pb::FullBayesianProgramBelief) 
     Printf.@printf(
@@ -22,41 +31,36 @@ function Base.show(io::IO, pb::FullBayesianProgramBelief)
     ) 
 end
 
-function Base.rand(rng::Random.AbstractRNG, pb::FullBayesianProgramBelief)
-    randrow = pb.posterior_samples[StatsBase.sample(rng, axes(pb.posterior_samples, 1), 1), :]
-    pdgp = ProgramDGP(randrow.μ_toplevel[1], randrow.τ_toplevel[1], randrow.σ_toplevel[1], Tuple(randrow[1, ["η_toplevel[1]", "η_toplevel[2]"]]), pb.pid)
-
-    return Base.rand(rng, pdgp) 
-end
+Base.rand(rng::Random.AbstractRNG, pb::FullBayesianProgramBelief) = Base.rand(rng, pb.state_samples)
 
 struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
-    datasets::Vector{Vector{StudyDataset}}
+    datasets::Vector{Vector{StudyDataset}} # Maybe this should be stored in the program struct?
     progbeliefs::Vector{FullBayesianProgramBelief}
 end
 
-function FullBayesianBelief{M}(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam) where {M <: AbstractBayesianModel}
+function FullBayesianBelief{M}(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam, rng::Random.AbstractRNG) where {M <: AbstractBayesianModel}
     m = M(hyperparam)
-    samples = [FullBayesianProgramBelief(sample(m, datasets[pid]), pid) for pid in 1:length(datasets)]
+    samples = [FullBayesianProgramBelief(sample(m, datasets[pid]), pid, rng) for pid in 1:length(datasets)]
         
     return FullBayesianBelief{M}(datasets, samples)
 end
 
-function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief) where {M}
+function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief, rng::Random.AbstractRNG) where {M}
     datasets = deepcopy(priorbelief.datasets) 
     progbeliefs = copy(priorbelief.progbeliefs)
     m = M(hyperparam)
 
     for (pid, ds) in getdatasets(o)
         push!(datasets[pid], ds) 
-        progbeliefs[pid] = FullBayesianProgramBelief(sample(m, datasets[pid]), pid) 
+        progbeliefs[pid] = FullBayesianProgramBelief(sample(m, datasets[pid]), pid, rng) 
     end
 
     return FullBayesianBelief{M}(datasets, progbeliefs)
 end
 
-function POMDPs.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
+function Base.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
     progstates = [Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs)]
-    progdgps = [dgp(ps) for ps in progstates]
+    progdgps = dgp.(progstates) # [dgp(ps) for ps in progstates]
 
     return CausalState(DGP(progdgps), progstates)
 end
@@ -65,10 +69,11 @@ expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::AbstractFu
 
 struct FullBayesianUpdater <: POMDPs.Updater
     hyperparam::Hyperparam
+    rng::Random.AbstractRNG
 end
 
 POMDPs.initialize_belief(::FullBayesianUpdater, belief::FullBayesianBelief) = belief
 
 function POMDPs.update(updater::FullBayesianUpdater, belief_old::FullBayesianBelief{M}, a::AbstractFundingAction, o::EvalObservation) where {M}
-    return FullBayesianBelief{M}(a, o, updater.hyperparam, belief_old)
+    return FullBayesianBelief{M}(a, o, updater.hyperparam, belief_old, updater.rng)
 end
