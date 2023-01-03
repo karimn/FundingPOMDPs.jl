@@ -77,8 +77,8 @@ POMDPs.actions(m::KBanditFundingPOMDP{A, R, B}, b::AbstractBelief) where {A <: A
 
 POMDPs.reward(m::KBanditFundingProblem{A, R, B}, s::CausalState, a::A) where {A, R, B} = expectedutility(rewardmodel(m), s, a)
 
-POMDPs.initialstate(m::KBanditFundingMDP) = POMDPTools.Deterministic(m.curr_state) # CausalStateDistribution(mdp(m).dgp) 
-POMDPs.initialstate(m::KBanditFundingPOMDP) = initialbelief(m) # CausalStateDistribution(mdp(m).dgp) 
+POMDPs.initialstate(m::KBanditFundingProblem) = POMDPTools.Deterministic(mdp(m).curr_state) # CausalStateDistribution(mdp(m).dgp) 
+#POMDPs.initialstate(m::KBanditFundingPOMDP) = initialbelief(m) # CausalStateDistribution(mdp(m).dgp) 
 
 function POMDPs.observation(pomdp::KBanditFundingPOMDP{A, R, B}, s::CausalState, a::A, sp::CausalState) where {A, R, B}
     return MultiStudySampleDistribution(Dict(pid => StudySampleDistribution(getprogramstate(s, pid), pomdp.mdp.studysamplesize) for pid in get_evaluated_program_ids(a)))
