@@ -16,7 +16,7 @@ import DocOpt
 
 args = DocOpt.docopt(
     doc, 
-    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 1 -t 3" : ARGS, 
+    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 2 -t 3" : ARGS, 
     version = v"1"
 )
 
@@ -78,7 +78,6 @@ pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
 @threads for sim_index in 1:NUM_SIM
-#for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
     pftdpw_dgp = DGP(dgp_hyperparam, dgp_rng, NUM_PROGRAMS)
@@ -145,8 +144,8 @@ pftdpw_sim_data = run_fun(get_sim_data, pftdpw_sims; show_progress = true)
 
 if args["--append"]
     try
-        greedy_sim_data = hcat(greedy_sim_data, Serialization.deserialize(args["<greedy file>"]))
-        pftdpw_sim_data = hcat(pftdpw_sim_data, Serialization.deserialize(args["<pftdpw file>"]))
+        global greedy_sim_data = vcat(greedy_sim_data, Serialization.deserialize(args["<greedy file>"]))
+        global pftdpw_sim_data = vcat(pftdpw_sim_data, Serialization.deserialize(args["<pftdpw file>"]))
     catch 
         # Don't do anything; the file probably doesn't exist
     end
@@ -154,3 +153,8 @@ end
 
 Serialization.serialize(args["<greedy file>"], greedy_sim_data)
 Serialization.serialize(args["<pftdpw file>"], pftdpw_sim_data)
+
+#x = Serialization.deserialize("greedy_sim_test.jls")
+#pftdpw_sim_data = Serialization.deserialize("pftdpw_sim.jls")
+
+#Serialization.deserialize("Code/funding-portfolio/src/greedy_sim.jls")
