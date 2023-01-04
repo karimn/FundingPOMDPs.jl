@@ -1,19 +1,24 @@
 struct ProgramBelief 
     state_samples::ParticleFilters.AbstractParticleBelief
     pid::Int64
+    data::Vector{StudyDataset}
     posterior_summary_stats
 
-    ProgramBelief(state_samples::ParticleFilters.AbstractParticleBelief, pid::Int64, pss = nothing) = new(state_samples, pid, pss)
+    ProgramBelief(state_samples::ParticleFilters.AbstractParticleBelief, pid::Int64; data::Vector{StudyDataset} = StudyDataset[], post_summary = nothing) = new(state_samples, pid, data, post_summary)
 end
 
-function ProgramBelief(samples::DataFrame, pid::Int64, rng::Random.AbstractRNG)
+function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64, rng::Random.AbstractRNG)
+    samples = sample(m, data)
+
     pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"], pid)
     state_samples = ParticleFilters.ParticleCollection(Base.rand.(rng, pdgps))
 
     post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel), mean(samples[:, "η_toplevel[1]"]), mean(samples[:, "η_toplevel[2]"]))
 
-    return ProgramBelief(state_samples, pid, post_stats)
+    return ProgramBelief(state_samples, pid; data = data, post_summary = post_stats)
 end
+
+data(pb::ProgramBelief) = pb.data
 
 expectedutility(r::ExponentialUtilityModel, bpb::ProgramBelief, a::AbstractFundingAction) = mean(expectedutility(r, ParticleFilters.particle(bpb.state_samples, i), a) for i in ParticleFilters.n_particles(bpb.state_samples))
 
@@ -25,7 +30,6 @@ function Base.show(io::IO, pb::ProgramBelief)
     else
         Printf.@printf(
             io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f, E[η] = (%.2f, %.2f))", pb.posterior_summary_stats... 
-            #mean(pb.posterior_samples.μ_toplevel), mean(pb.posterior_samples.τ_toplevel), mean(pb.posterior_samples.σ_toplevel), mean(pb.posterior_samples[:, "η_toplevel[1]"]), mean(pb.posterior_samples[:, "η_toplevel[2]"])
         ) 
     end
 end
@@ -33,28 +37,28 @@ end
 Base.rand(rng::Random.AbstractRNG, pb::ProgramBelief) = Base.rand(rng, pb.state_samples)
 
 struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
-    datasets::Vector{Vector{StudyDataset}} # Maybe this should be stored in the program struct?
     progbeliefs::Vector{ProgramBelief}
 end
 
 function FullBayesianBelief{M}(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam, rng::Random.AbstractRNG) where {M <: AbstractBayesianModel}
     m = M(hyperparam)
-    samples = [ProgramBelief(sample(m, datasets[pid]), pid, rng) for pid in 1:length(datasets)]
+    samples = [ProgramBelief(m, datasets[pid], pid, rng) for pid in 1:length(datasets)]
         
-    return FullBayesianBelief{M}(datasets, samples)
+    return FullBayesianBelief{M}(samples)
 end
 
 function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief, rng::Random.AbstractRNG) where {M}
-    datasets = deepcopy(priorbelief.datasets) 
     progbeliefs = copy(priorbelief.progbeliefs)
     m = M(hyperparam)
 
     for (pid, ds) in getdatasets(o)
-        push!(datasets[pid], ds) 
-        progbeliefs[pid] = ProgramBelief(sample(m, datasets[pid]), pid, rng) 
+        new_data = copy(data(progbeliefs[pid]))
+        push!(new_data, ds)
+
+        progbeliefs[pid] = ProgramBelief(m, new_data, pid, rng) 
     end
 
-    return FullBayesianBelief{M}(datasets, progbeliefs)
+    return FullBayesianBelief{M}(progbeliefs)
 end
 
 function Base.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
