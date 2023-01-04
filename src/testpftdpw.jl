@@ -1,6 +1,32 @@
+doc = """
+Funding POMDP simulation.
+
+Usage:
+    testpftdpw.jl <greedy file> <pftdpw file> [--append --numprograms=<nprograms> --numsim=<numsim> --numsteps=<numsteps> --numprocs=<nprocs>]
+
+Options:
+    --append, -a                               Append data
+    --numprograms=<nprograms>, -p <nprograms>  Number of programs [default: 10]
+    --numsim=<numsim>, -s <numsim>             Number of simulations [default: 10]
+    --numsteps=<numsteps>, -t <numsteps>       Number of steps [default: 10]
+    --numprocs=<nprocs>                        Number of parallel processes [default: 5]
+"""
+
+import DocOpt
+
+args = DocOpt.docopt(
+    doc, 
+    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 1 -t 3" : ARGS, 
+    version = v"1"
+)
+
 using Distributed
 
-addprocs(5, exeflags = "--project")
+const NUM_PROCS = parse(Int, args["--numprocs"])
+
+if NUM_PROCS > 1
+    addprocs(NUM_PROCS, exeflags = "--project")
+end
 
 @everywhere include("FundingPOMDPs.jl")
 
@@ -9,7 +35,7 @@ addprocs(5, exeflags = "--project")
 
     using DataFrames, StatsBase, Base.Threads
 
-    import Random
+    import Random, Serialization
     import POMDPs, POMDPTools, POMDPSimulators
     import ParticleFilters
     import MCTS
@@ -18,9 +44,9 @@ addprocs(5, exeflags = "--project")
 end
 
 const RNG = Random.MersenneTwister()
-const NUM_PROGRAMS = 5 
-const NUM_SIM = 10 
-const NUM_SIM_STEPS = 10 
+const NUM_PROGRAMS = parse(Int, args["--numprograms"])
+const NUM_SIM = parse(Int, args["--numsim"])
+const NUM_SIM_STEPS = parse(Int, args["--numsteps"])  
 const NUM_FILTER_PARTICLES = 2_000
 
 dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
@@ -51,8 +77,8 @@ bayes_updater = FullBayesianUpdater(inference_hyperparam, RNG)
 pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
-#@threads for sim_index in 1:NUM_SIM
-for sim_index in 1:NUM_SIM
+@threads for sim_index in 1:NUM_SIM
+#for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
     pftdpw_dgp = DGP(dgp_hyperparam, dgp_rng, NUM_PROGRAMS)
@@ -72,6 +98,7 @@ for sim_index in 1:NUM_SIM
     particle_updater = MultiBootstrapFilter(pftdpw_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
     bayes_b = initialbelief(pftdpw_pomdp)
     particle_b = POMDPs.initialize_belief(particle_updater, bayes_b)
+    init_s = POMDPs.initialstate(pftdpw_mdp).val
 
     belief_mdp = MCTS.GenerativeBeliefMDP(deepcopy(pftdpw_pomdp), particle_updater)
     pftdpw_planner = POMDPs.solve(dpfdpw_solver, belief_mdp)
@@ -83,18 +110,18 @@ for sim_index in 1:NUM_SIM
         inference_hyperparam,
         greedy_dgp,
         select_subset_actionset_factory;
-        curr_state = pftdpw_mdp.curr_state
+        curr_state = init_s 
     )
 
-    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(greedy_mdp, initialbelief(pftdpw_pomdp))
+    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(greedy_mdp, bayes_b)
 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 
     greedy_sim_rng = Random.MersenneTwister()
     pftdpw_sim_rng = copy(greedy_sim_rng)
 
-    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
-    greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
+    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
+    greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, bayes_b, init_s, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
 end
 
 @everywhere function get_sim_data(sim::POMDPTools.Sim, hist::POMDPTools.SimHistory)
@@ -111,5 +138,19 @@ end
     )
 end
 
-greedy_sim_data = POMDPTools.run_parallel(get_sim_data, greedy_sims; show_progress = true)
-pftdpw_sim_data = POMDPTools.run_parallel(get_sim_data, pftdpw_sims; show_progress = true) 
+run_fun = NUM_PROCS > 1 ? POMDPTools.run_parallel : POMDPTools.run
+
+greedy_sim_data = run_fun(get_sim_data, greedy_sims; show_progress = true)
+pftdpw_sim_data = run_fun(get_sim_data, pftdpw_sims; show_progress = true) 
+
+if args["--append"]
+    try
+        greedy_sim_data = hcat(greedy_sim_data, Serialization.deserialize(args["<greedy file>"]))
+        pftdpw_sim_data = hcat(pftdpw_sim_data, Serialization.deserialize(args["<pftdpw file>"]))
+    catch 
+        # Don't do anything; the file probably doesn't exist
+    end
+end
+
+Serialization.serialize(args["<greedy file>"], greedy_sim_data)
+Serialization.serialize(args["<pftdpw file>"], pftdpw_sim_data)
