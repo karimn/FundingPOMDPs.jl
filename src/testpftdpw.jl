@@ -2,7 +2,7 @@ doc = """
 Funding POMDP simulation.
 
 Usage:
-    testpftdpw.jl <greedy file> <pftdpw file> [--append --numprograms=<nprograms> --numsim=<numsim> --numsteps=<numsteps> --numprocs=<nprocs>]
+    testpftdpw.jl <greedy file> <pftdpw file> [options]
 
 Options:
     --append, -a                               Append data
@@ -10,6 +10,7 @@ Options:
     --numsim=<numsim>, -s <numsim>             Number of simulations [default: 10]
     --numsteps=<numsteps>, -t <numsteps>       Number of steps [default: 10]
     --numprocs=<nprocs>                        Number of parallel processes [default: 5]
+    --depth=<depth>, -d <depth>                Planning depth [default: 10]
 """
 
 import DocOpt
@@ -58,7 +59,7 @@ select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRA
 explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1, util_model)
 
 dpfdpw_solver = MCTS.DPWSolver(
-    depth = 10,
+    depth = parse(Int, args["--depth"]),
     exploration_constant = 0.0,
     n_iterations = 100,
     enable_action_pw = false,  
