@@ -15,4 +15,5 @@ abstract type AbstractRewardModel end
 
 abstract type AbstractFundingAction end
 abstract type AbstractActionSet end
+abstract type AbstractActionSetFactory{A} end
 

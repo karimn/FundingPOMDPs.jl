@@ -23,10 +23,11 @@ include("SimDGP.jl")
 include("reward.jl")
 include("dgp.jl")
 include("states.jl")
-include("actions.jl")
 include("reward.jl")
 include("observations.jl")
 include("beliefs.jl")
+include("actions.jl")
+include("actionsets.jl")
 include("kbandit.jl")
 include("solvers.jl")
 include("particles.jl")
@@ -40,9 +41,10 @@ export AbstractRewardModel
 export ExponentialUtilityModel, expectedutility
 export AbstractFundingAction 
 export ImplementEvalAction, ImplementOnlyAction, SeparateImplementEvalAction
-export AbstractActionSet, AbstractFundingAction
-export KBanditFundingMDP, KBanditFundingPOMDP, KBanditActionSet, SelectProgramSubsetActionSet, SeparateImplementAndEvalActionSet
-export numprograms, initialbelief, rewardmodel, hyperparam
+export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
+export KBanditFundingMDP, KBanditFundingPOMDP
+export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
+export numprograms, initialbelief, rewardmodel, hyperparam, initialstate
 export FullBayesianBelief, FullBayesianUpdater
 export BayesianGreedySolver, BayesianGreedyPlanner
 export MultiBootstrapFilter, CausalStateParticleBelief
