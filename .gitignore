@@ -24,3 +24,4 @@ _quarto.yml
 sim_model
 
 sim_model.rds
+src/*.jls
