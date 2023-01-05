@@ -1,6 +1,7 @@
 implements(a::AbstractFundingAction, pb::ProgramBelief) = implements(a, pb.pid)
 implements(a::AbstractFundingAction, progdgp::ProgramDGP) = implements(a, progdgp.programid)
 implements(a::AbstractFundingAction, pcs::ProgramCausalState) = implements(a, pcs.programid)
+evaluates(a::AbstractFundingAction, pb::ProgramBelief) = evaluates(a, pb.pid) 
 
 @with_kw struct ImplementEvalAction <: AbstractFundingAction
     implement_eval_programs::BitSet = BitSet() 
@@ -22,7 +23,9 @@ ImplementOnlyAction(pids::Vector{Int64}) = ImplementOnlyAction(BitSet(pids))
 
 implements(a::ImplementOnlyAction, i::Int64) = in(i, a.implement_programs)
 evaluates(a::ImplementOnlyAction, i::Int64) = false 
-get_evaluated_program_ids(::ImplementOnlyAction) = BitSet() 
+get_evaluated_program_ids(::ImplementOnlyAction) = BitSet()
+
+Base.isempty(a::ImplementOnlyAction) = isempty(a.implement_programs) 
 
 Base.show(io::IO, a::ImplementOnlyAction) = print(io, "ImplementOnlyAction([$(a.implement_programs)])")  
 
