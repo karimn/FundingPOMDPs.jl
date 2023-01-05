@@ -17,6 +17,8 @@ getprogramids(o::EvalObservation) = keys(o.programobs)
 
 getdatasets(obs::EvalObservation) = Dict(pid => getdataset(o) for (pid, o) in obs.programobs)
 
+programobs(obs::EvalObservation, pid::Int) = obs.programobs[pid]
+
 numprograms(obs::EvalObservation) = length(obs.programobs)
 
 struct StudySampleDistribution <: AbstractStudySampleDistribution

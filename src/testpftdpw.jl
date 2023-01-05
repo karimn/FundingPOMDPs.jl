@@ -17,7 +17,7 @@ import DocOpt
 
 args = DocOpt.docopt(
     doc, 
-    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 2 -t 3" : ARGS, 
+    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 2 -t 3 --numprocs=1" : ARGS, 
     version = v"1"
 )
 
@@ -73,7 +73,11 @@ dpfdpw_solver = MCTS.DPWSolver(
 
 greedy_solver = BayesianGreedySolver()
 
-bayes_updater = FullBayesianUpdater(inference_hyperparam, RNG)
+bayes_model = TuringModel(inference_hyperparam)
+bayes_updater = FullBayesianUpdater(RNG, bayes_model)
+
+naive_bayes_model = TuringModel(inference_hyperparam; multilevel = false)
+naive_bayes_updater = FullBayesianUpdater(RNG, bayes_model)
 
 pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
@@ -88,12 +92,11 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
         util_model,
         0.95,
         50,
-        inference_hyperparam,
         pftdpw_dgp,
         explore_only_actionset_factory
     )
 
-    pftdpw_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(pftdpw_mdp)
+    pftdpw_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, ExponentialUtilityModel, FullBayesianBelief}(pftdpw_mdp, bayes_model)
 
     particle_updater = MultiBootstrapFilter(pftdpw_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
     bayes_b = initialbelief(pftdpw_pomdp)
@@ -107,21 +110,20 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
         util_model,
         0.95,
         50,
-        inference_hyperparam,
         greedy_dgp,
         select_subset_actionset_factory;
         curr_state = init_s 
     )
 
-    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief{TuringModel}}(greedy_mdp, bayes_b)
+    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief}(greedy_mdp, bayes_b, naive_bayes_model)
 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 
     greedy_sim_rng = Random.MersenneTwister()
     pftdpw_sim_rng = copy(greedy_sim_rng)
 
-    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
-    greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, bayes_b, init_s, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
+    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
+    greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, naive_bayes_updater, initialbelief(greedy_pomdp), init_s, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
 end
 
 @everywhere function get_sim_data(sim::POMDPTools.Sim, hist::POMDPTools.SimHistory)

@@ -28,7 +28,7 @@ struct Hyperparam
     Hyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd)
 end
 
-@model function sim_model(hyperparam::Hyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0)
+@model function sim_model(hyperparam::Hyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0, multilevel = true)
     if datasets === missing 
         n_study = n_sim_study 
         datasets = [StudyDataset(n_sim_obs) for i in 1:n_sim_study]
@@ -41,8 +41,13 @@ end
     σ_toplevel ~ truncated(Normal(0, hyperparam.sigma_sd), 0, Inf)
     η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_sd[i]), 0, Inf) for i in 1:2])
 
-    μ_study ~ filldist(Normal(μ_toplevel, η_toplevel[1]), n_study)
-    τ_study ~ filldist(Normal(τ_toplevel, η_toplevel[2]), n_study)
+    if multilevel
+        μ_study ~ filldist(Normal(μ_toplevel, η_toplevel[1]), n_study)
+        τ_study ~ filldist(Normal(τ_toplevel, η_toplevel[2]), n_study)
+    else
+        μ_study = μ_toplevel
+        τ_study = τ_toplevel
+    end
    
     for ds_index in 1:n_study
         for i in eachindex(datasets[ds_index].y_control) 
@@ -61,12 +66,13 @@ struct TuringModel <: AbstractBayesianModel
     hyperparam::Hyperparam
     iter
     chains
+    multilevel::Bool
 
-    TuringModel(hyperparam::Hyperparam, iter = 500, chains = 4) = new(hyperparam, iter, chains)
+    TuringModel(hyperparam::Hyperparam, iter = 500, chains = 4; multilevel = true) = new(hyperparam, iter, chains, multilevel)
 end
 
 function sample(m::TuringModel, datasets::Vector{StudyDataset})
-    @pipe sim_model(m.hyperparam, datasets) |>
+    @pipe sim_model(m.hyperparam, datasets; multilevel = m.multilevel) |>
         Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains) |> 
         DataFrame(_) |>
         select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 

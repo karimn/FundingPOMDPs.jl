@@ -1,3 +1,8 @@
+Base.iterate(b::AbstractBelief) = iterate(b.progbeliefs)
+Base.iterate(b::AbstractBelief, n) = iterate(b.progbeliefs, n)
+Base.getindex(b::AbstractBelief, i) = b.progbeliefs[i]
+Base.length(b::AbstractBelief) = length(b.progbeliefs)
+
 struct ProgramBelief 
     state_samples::ParticleFilters.AbstractParticleBelief
     pid::Int64
@@ -18,6 +23,8 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     return ProgramBelief(state_samples, pid; data = data, post_summary = post_stats)
 end
 
+programid(pb::ProgramBelief) = pb.pid
+
 data(pb::ProgramBelief) = pb.data
 
 expectedutility(r::ExponentialUtilityModel, bpb::ProgramBelief, a::AbstractFundingAction) = mean(expectedutility(r, ParticleFilters.particle(bpb.state_samples, i), a) for i in ParticleFilters.n_particles(bpb.state_samples))
@@ -36,29 +43,14 @@ end
 
 Base.rand(rng::Random.AbstractRNG, pb::ProgramBelief) = Base.rand(rng, pb.state_samples)
 
-struct FullBayesianBelief{M <: AbstractBayesianModel} <: AbstractBelief
+struct FullBayesianBelief <: AbstractBelief
     progbeliefs::Vector{ProgramBelief}
 end
 
-function FullBayesianBelief{M}(datasets::Vector{Vector{StudyDataset}}, hyperparam::Hyperparam, rng::Random.AbstractRNG) where {M <: AbstractBayesianModel}
-    m = M(hyperparam)
+function FullBayesianBelief(datasets::Vector{Vector{StudyDataset}}, m::AbstractBayesianModel, rng::Random.AbstractRNG) 
     samples = [ProgramBelief(m, datasets[pid], pid, rng) for pid in 1:length(datasets)]
         
-    return FullBayesianBelief{M}(samples)
-end
-
-function FullBayesianBelief{M}(a::AbstractFundingAction, o::EvalObservation, hyperparam::Hyperparam, priorbelief::FullBayesianBelief, rng::Random.AbstractRNG) where {M}
-    progbeliefs = copy(priorbelief.progbeliefs)
-    m = M(hyperparam)
-
-    for (pid, ds) in getdatasets(o)
-        new_data = copy(data(progbeliefs[pid]))
-        push!(new_data, ds)
-
-        progbeliefs[pid] = ProgramBelief(m, new_data, pid, rng) 
-    end
-
-    return FullBayesianBelief{M}(progbeliefs)
+    return FullBayesianBelief(samples)
 end
 
 function Base.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
@@ -70,13 +62,26 @@ end
 
 expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
 
-struct FullBayesianUpdater <: POMDPs.Updater
-    hyperparam::Hyperparam
+struct FullBayesianUpdater{M <: AbstractBayesianModel} <: POMDPs.Updater
     rng::Random.AbstractRNG
+    bayesian_model::M
 end
 
 POMDPs.initialize_belief(::FullBayesianUpdater, belief::FullBayesianBelief) = belief
 
-function POMDPs.update(updater::FullBayesianUpdater, belief_old::FullBayesianBelief{M}, a::AbstractFundingAction, o::EvalObservation) where {M}
-    return FullBayesianBelief{M}(a, o, updater.hyperparam, belief_old, updater.rng)
+POMDPs.update(updater::FullBayesianUpdater, belief_old::FullBayesianBelief, a::AbstractFundingAction, o::EvalObservation) = FullBayesianBelief([POMDPs.update(updater, pb, a, o) for pb in belief_old.progbeliefs])
+
+function POMDPs.update(updater::FullBayesianUpdater, belief_old::ProgramBelief, a::AbstractFundingAction, o::EvalObservation) 
+    if evaluates(a, belief_old) 
+        new_data = copy(data(belief_old))
+
+        @pipe programid(belief_old) |>
+            programobs(o, _) |>
+            getdataset(_) |>
+            push!(new_data, _)
+
+        return ProgramBelief(updater.bayesian_model, new_data, belief_old.pid, updater.rng) 
+    else
+        return belief_old
+    end
 end

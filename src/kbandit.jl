@@ -3,15 +3,15 @@ struct KBanditFundingMDP{A <: AbstractFundingAction, R <: AbstractRewardModel} <
     rewardmodel::R
     discount::Float64
     studysamplesize::Int64
-    inference_hyperparam::Hyperparam
+    #inference_hyperparam::Hyperparam
     dgp::AbstractDGP
     actionset_factory::AbstractActionSetFactory{A}
     rng::Random.AbstractRNG
 
     curr_state::CausalState
 
-    function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, inference_hyperparam::Hyperparam, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}; rng::Random.AbstractRNG = Random.GLOBAL_RNG, curr_state::CausalState = Base.rand(rng, dgp)) where {A, R <: AbstractRewardModel}
-        return new{A, R}(r, d, ss, inference_hyperparam, dgp, asf, rng, curr_state)
+    function KBanditFundingMDP{A, R}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}; rng::Random.AbstractRNG = Random.GLOBAL_RNG, curr_state::CausalState = Base.rand(rng, dgp)) where {A, R <: AbstractRewardModel}
+        return new{A, R}(r, d, ss, dgp, asf, rng, curr_state)
     end 
 end
 
@@ -23,18 +23,22 @@ struct KBanditFundingPOMDP{A <: AbstractFundingAction, R <: AbstractRewardModel,
     curr_belief::B
 end
 
-function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}, data::Vector{Vector{StudyDataset}}) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief} 
-    return KBanditFundingPOMDP{A, R, B}(mdp, B(data, mdp.inference_hyperparam, mdp.rng))
+function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}, data::Vector{Vector{StudyDataset}}, m::AbstractBayesianModel) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief} 
+    return KBanditFundingPOMDP{A, R, B}(mdp, B(data, m, mdp.rng))
 end
 
-function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief}
+function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}, belief::B, m::AbstractBayesianModel) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief} 
+    return KBanditFundingPOMDP{A, R, B}(mdp, [data(pb) for pb in belief], m)
+end
+
+function KBanditFundingPOMDP{A, R, B}(mdp::KBanditFundingMDP{A, R}, m::AbstractBayesianModel) where {A <: AbstractFundingAction, R <: AbstractRewardModel, B <: AbstractBelief}
     initdatasets = Vector{Vector{StudyDataset}}(undef, numprograms(mdp.curr_state))
 
     for (pid, ds) in getdatasets(Base.rand(mdp.rng, mdp.curr_state, mdp.studysamplesize))
         initdatasets[pid] = [ds] 
     end
     
-    return KBanditFundingPOMDP{A, R, B}(mdp, initdatasets)
+    return KBanditFundingPOMDP{A, R, B}(mdp, initdatasets, m)
 end 
 
 function KBanditFundingPOMDP{A, R, B}(r::R, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A, R <: AbstractRewardModel, B <: AbstractBelief}
@@ -54,7 +58,7 @@ programbandits(m::KBanditFundingPOMDP) = [ProgramBanditWrapper(m, i) for i in 1:
 
 mdp(m::KBanditFundingPOMDP) = m.mdp
 
-hyperparam(m::KBanditFundingProblem) = mdp(m).inference_hyperparam
+#hyperparam(m::KBanditFundingProblem) = mdp(m).inference_hyperparam
 
 numprograms(m::KBanditFundingProblem) = numprograms(mdp(m).dgp)
 
