@@ -27,7 +27,9 @@ programid(pb::ProgramBelief) = pb.pid
 
 data(pb::ProgramBelief) = pb.data
 
-expectedutility(r::ExponentialUtilityModel, bpb::ProgramBelief, a::AbstractFundingAction) = mean(expectedutility(r, ParticleFilters.particle(bpb.state_samples, i), a) for i in ParticleFilters.n_particles(bpb.state_samples))
+function expectedutility(r::ExponentialUtilityModel, bpb::ProgramBelief, a::Union{AbstractFundingAction, Bool}) 
+    return mean(expectedutility(r, ParticleFilters.particle(bpb.state_samples, i), a) for i in 1:ParticleFilters.n_particles(bpb.state_samples))
+end
 
 state_samples(bpb::ProgramBelief) = bpb.state_samples
 
