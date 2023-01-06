@@ -50,8 +50,8 @@ const NUM_SIM = parse(Int, args["--numsim"])
 const NUM_SIM_STEPS = parse(Int, args["--numsteps"])  
 const NUM_FILTER_PARTICLES = 2_000
 
-dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.1, 0.1, 0.1])
-inference_hyperparam = Hyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.5, sigma_sd = 4.0, eta_sd = [0.2, 0.2, 0.2])
+dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.2, 0.2, 0.2])
+inference_hyperparam = Hyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.5, sigma_sd = 4.0, eta_sd = [0.4, 0.4, 0.4])
 
 util_model = ExponentialUtilityModel(1.0)
 
@@ -135,6 +135,7 @@ end
         actual_reward = collect(POMDPSimulators.reward_hist(hist)),
         belief = beliefs,
         expected_reward = [expectedutility(rewardmodel(sim.pomdp), b, a) for (b, a) in zip(beliefs, actions)],
+        state = collect(POMDPSimulators.state_hist(hist)),
 
         total_undiscounted_actual_reward = POMDPSimulators.undiscounted_reward(hist)
     )
