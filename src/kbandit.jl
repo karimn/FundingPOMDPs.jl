@@ -71,9 +71,8 @@ POMDPs.discount(m::KBanditFundingProblem) = mdp(m).discount
 POMDPs.isterminal(m::KBanditFundingProblem) = false 
 POMDPs.isterminal(m::POMDPTools.GenerativeBeliefMDP, b::AbstractBelief) = false  # So we don't have to look at the entire support
 
-POMDPs.transition(m::KBanditFundingProblem, s::CausalState, a::AbstractFundingAction) = transition(s, a)  #CausalStateDistribution(mdp(m).dgp) 
-
-POMDPs.transition(m::ProgramBanditWrapper, s::ProgramCausalState, a::AbstractFundingAction) = transition(s, a)  #CausalStateDistribution(mdp(m).dgp) 
+POMDPs.transition(m::KBanditFundingProblem, s::CausalState, a::AbstractFundingAction) = transition(s, a)  
+POMDPs.transition(m::ProgramBanditWrapper, s::ProgramCausalState, a::AbstractFundingAction) = transition(s, a) 
 
 POMDPs.actions(m::KBanditFundingProblem) = actions(mdp(m).actionset_factory)
 POMDPs.actions(m::KBanditFundingProblem, s::CausalState) = actions(mdp(m).actionset_factory, s)
