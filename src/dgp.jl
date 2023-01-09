@@ -36,7 +36,7 @@ struct DGP <: AbstractDGP
     programdgps::Vector{ProgramDGP}
 end
 
- function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64)
+function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64)
     return DGP([ProgramDGP(hyperparam, rng, i) for i in 1:numprograms]) 
 end
 
