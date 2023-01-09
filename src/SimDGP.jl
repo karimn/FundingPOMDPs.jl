@@ -39,12 +39,13 @@ end
     μ_toplevel ~ Normal(0, hyperparam.mu_sd)
     τ_toplevel ~ Normal(hyperparam.tau_mean, hyperparam.tau_sd)
     σ_toplevel ~ truncated(Normal(0, hyperparam.sigma_sd), 0, Inf)
-    η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_sd[i]), 0, Inf) for i in 1:2])
 
     if multilevel
+        η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_sd[i]), 0, Inf) for i in 1:2])
         μ_study ~ filldist(Normal(μ_toplevel, η_toplevel[1]), n_study)
         τ_study ~ filldist(Normal(τ_toplevel, η_toplevel[2]), n_study)
     else
+        η_toplevel = [0.0, 0.0] 
         μ_study = μ_toplevel
         τ_study = τ_toplevel
     end
