@@ -14,11 +14,15 @@ end
 
 function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64, rng::Random.AbstractRNG)
     samples = sample(m, data)
+    sample_cols = names(samples)
 
-    pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"], pid)
+    η = "η_toplevel[1]" in sample_cols && "η_toplevel[1]" in sample_cols ? (samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"]) : (0.0, 0.0) 
+
+    pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, η..., pid)
     state_samples = ParticleFilters.ParticleCollection(Base.rand.(rng, pdgps))
 
-    post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel), mean(samples[:, "η_toplevel[1]"]), mean(samples[:, "η_toplevel[2]"]))
+
+    post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel), η...)
 
     return ProgramBelief(state_samples, pid; data = data, post_summary = post_stats)
 end
