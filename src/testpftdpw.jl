@@ -23,9 +23,10 @@ args = DocOpt.docopt(
 
 using Distributed
 
-const NUM_PROCS = parse(Int, args["--numprocs"])
+# "julia -p" takes precedence
+const NUM_PROCS = nprocs() > 1 ? nprocs() : parse(Int, args["--numprocs"])
 
-if NUM_PROCS > 1
+if NUM_PROCS > 1 && !(nprocs() > 1)
     addprocs(NUM_PROCS, exeflags = "--project")
 end
 
