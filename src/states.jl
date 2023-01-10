@@ -65,17 +65,25 @@ Base.rand(rng::Random.AbstractRNG, pcsd::ProgramCausalStateDistribution) = Base.
 struct CausalState <: AbstractState 
     dgp::DGP
     programstates::Vector{ProgramCausalState}
-    prev::Union{CausalState, Nothing}
-
-    CausalState(dgp::DGP, ps::Vector{ProgramCausalState}, prev::Union{CausalState, Nothing} = nothing) = new(dgp, ps, prev)
+    next::Union{CausalState, Nothing}
 end
 
-CausalState(progstates::Vector{ProgramCausalState}) = CausalState(DGP([dgp(ps) for ps in progstates]), progstates)
+CausalState(progstates::Vector{ProgramCausalState}) = CausalState(DGP([dgp(ps) for ps in progstates]), progstates, nothing)
 
 dgp(s::CausalState) = s.dgp
 
-function Base.rand(rng::Random.AbstractRNG, dgp::DGP, prev::Union{CausalState, Nothing} = nothing)
-    return CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps], prev)
+function Base.rand(rng::Random.AbstractRNG, dgp::DGP; state_chain_length::Int = 1)
+    (state_chain_length >= 1) || throw(ArgumentError("state_chain_length must be equal or greater than zero"))
+
+    second_state = nothing
+    local first_state = nothing
+
+    for _ in 1:state_chain_length
+        first_state = CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps], second_state)
+        second_state = first_state
+    end
+
+    return first_state
 end
 
 Base.rand(rng::Random.AbstractRNG, s::CausalState, samplesize::Int64 = 50) = EvalObservation(Dict(getprogramid(ps) => Base.rand(rng, ps, samplesize) for ps in s.programstates))
@@ -94,11 +102,8 @@ expectedutility(m::ExponentialUtilityModel, pc::ParticleFilters.ParticleCollecti
 
 struct CausalStateDistribution
     dgp::AbstractDGP
-    prev::Union{Nothing, CausalState}
 end
 
-Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp, sd.prev) 
+Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp) 
 
-function transition(s::CausalState, a::AbstractFundingAction)
-    return CausalStateDistribution(s.dgp, s)
-end
+transition(s::CausalState, ::AbstractFundingAction) = s.next ≡ nothing ? CausalStateDistribution(s.dgp) : Deterministic(s.next) 
