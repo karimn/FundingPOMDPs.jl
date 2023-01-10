@@ -69,7 +69,7 @@ struct TuringModel <: AbstractBayesianModel
     chains
     multilevel::Bool
 
-    TuringModel(hyperparam::Hyperparam, iter = 500, chains = 4; multilevel = true) = new(hyperparam, iter, chains, multilevel)
+    TuringModel(hyperparam::Hyperparam; iter = 500, chains = 4, multilevel = true) = new(hyperparam, iter, chains, multilevel)
 end
 
 function sample(m::TuringModel, datasets::Vector{StudyDataset})
