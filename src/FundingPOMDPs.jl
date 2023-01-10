@@ -36,16 +36,18 @@ export StudyDataset, Hyperparam, sim_model
 export AbstractDGP, AbstractProgramDGP, AbstractState 
 export DGP, ProgramDGP, CausalState
 export AbstractEvalObservation
-export EvalObservation
+export EvalObservation, getdatasets
 export AbstractRewardModel 
-export ExponentialUtilityModel, expectedutility
+export ExponentialUtilityModel, expectedutility, utility
 export AbstractFundingAction 
 export ImplementEvalAction, ImplementOnlyAction, SeparateImplementEvalAction
 export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
+export actions
 export KBanditFundingMDP, KBanditFundingPOMDP
 export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
 export numprograms, initialbelief, rewardmodel, hyperparam, initialstate
-export FullBayesianBelief, FullBayesianUpdater
+export FullBayesianBelief, FullBayesianUpdater, ProgramBelief
+export utility_particles
 export BayesianGreedySolver, BayesianGreedyPlanner
 export MultiBootstrapFilter, CausalStateParticleBelief
 export TuringModel
