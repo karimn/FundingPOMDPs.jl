@@ -21,8 +21,8 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, η..., pid)
     state_samples = ParticleFilters.ParticleCollection(Base.rand.(rng, pdgps))
 
-
-    post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel), η...)
+    #post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel), η...)
+    post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel))
 
     return ProgramBelief(state_samples, pid; data = data, post_summary = post_stats)
 end
@@ -31,11 +31,11 @@ programid(pb::ProgramBelief) = pb.pid
 
 data(pb::ProgramBelief) = pb.data
 
-function utility_particles(r::ExponentialUtilityModel, bpb::ProgramBelief, a::Union{AbstractFundingAction, Bool})
+function utility_particles(r::AbstractRewardModel, bpb::ProgramBelief, a::Union{AbstractFundingAction, Bool})
     return [expectedutility(r, ParticleFilters.particle(bpb.state_samples, i), a) for i in 1:ParticleFilters.n_particles(bpb.state_samples)]
 end
 
-function expectedutility(r::ExponentialUtilityModel, bpb::ProgramBelief, a::Union{AbstractFundingAction, Bool}) 
+function expectedutility(r::AbstractRewardModel, bpb::ProgramBelief, a::Union{AbstractFundingAction, Bool}) 
     return mean(utility_particles(r, bpb, a))
 end
 
@@ -46,7 +46,8 @@ function Base.show(io::IO, pb::ProgramBelief)
         print("ProgramBelief(<particles>)")
     else
         Printf.@printf(
-            io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f, E[η] = (%.2f, %.2f))", pb.posterior_summary_stats... 
+            #io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f, E[η] = (%.2f, %.2f))", pb.posterior_summary_stats... 
+            io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f)", pb.posterior_summary_stats... 
         ) 
     end
 end
@@ -70,7 +71,7 @@ function Base.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
     return CausalState(DGP(progdgps), progstates)
 end
 
-expectedutility(r::ExponentialUtilityModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
+expectedutility(r::AbstractRewardModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
 
 struct FullBayesianUpdater{M <: AbstractBayesianModel} <: POMDPs.Updater
     rng::Random.AbstractRNG

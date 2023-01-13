@@ -11,6 +11,7 @@ Options:
     --numsteps=<numsteps>, -t <numsteps>       Number of steps [default: 10]
     --numprocs=<nprocs>                        Number of parallel processes [default: 5]
     --depth=<depth>, -d <depth>                Planning depth [default: 10]
+    --risk-neutral                             Risk neutral utility
 """
 
 import DocOpt
@@ -52,10 +53,10 @@ const NUM_SIM_STEPS = parse(Int, args["--numsteps"])
 const NUM_TURING_MODEL_ITER = 1_000
 const NUM_FILTER_PARTICLES = 2_000
 
-dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.1, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.2, 0.2, 0.2])
+dgp_hyperparam = Hyperparam(mu_sd = 1.0, tau_mean = 0.0, tau_sd = 0.25, sigma_sd = 1.0, eta_sd = [0.2, 0.2, 0.2])
 inference_hyperparam = Hyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.5, sigma_sd = 4.0, eta_sd = [0.4, 0.4, 0.4])
 
-util_model = ExponentialUtilityModel(1.0)
+util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(1.0)
 
 select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRAMS, 1)
 explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1, util_model)
@@ -93,7 +94,7 @@ for sim_index in 1:NUM_SIM
 
     init_s = Base.rand(RNG, pftdpw_dgp; state_chain_length = NUM_SIM_STEPS)
 
-    pftdpw_mdp = KBanditFundingMDP{SeparateImplementEvalAction, ExponentialUtilityModel}(
+    pftdpw_mdp = KBanditFundingMDP{SeparateImplementEvalAction}(
         util_model,
         0.95,
         50,
@@ -102,7 +103,7 @@ for sim_index in 1:NUM_SIM
         curr_state = init_s
     )
 
-    pftdpw_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, ExponentialUtilityModel, FullBayesianBelief}(pftdpw_mdp, bayes_model)
+    pftdpw_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, FullBayesianBelief}(pftdpw_mdp, bayes_model)
 
     particle_updater = MultiBootstrapFilter(pftdpw_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
     bayes_b = initialbelief(pftdpw_pomdp)
@@ -112,7 +113,7 @@ for sim_index in 1:NUM_SIM
     pftdpw_planner = POMDPs.solve(dpfdpw_solver, belief_mdp)
     random_planner = POMDPs.solve(random_solver, pftdpw_pomdp)
 
-    greedy_mdp = KBanditFundingMDP{ImplementOnlyAction, ExponentialUtilityModel}(
+    greedy_mdp = KBanditFundingMDP{ImplementOnlyAction}(
         util_model,
         0.95,
         50,
@@ -121,7 +122,7 @@ for sim_index in 1:NUM_SIM
         curr_state = init_s 
     )
 
-    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, ExponentialUtilityModel, FullBayesianBelief}(greedy_mdp, bayes_b, bayes_model)
+    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, FullBayesianBelief}(greedy_mdp, bayes_b, bayes_model)
 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 

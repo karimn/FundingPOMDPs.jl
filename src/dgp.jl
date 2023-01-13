@@ -22,7 +22,7 @@ Base.show(io::IO, pdgp::ProgramDGP) = Printf.@printf(io, "ProgramDGP(μ = %.2f, 
 
 getprogramid(pd::ProgramDGP) = pd.programid
 
-function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, impl::Bool) 
+function expectedutility(r::AbstractRewardModel, progdgp::ProgramDGP, impl::Bool) 
     return expectedutility(
         r, 
         progdgp.μ + (impl ? progdgp.τ : 0), 
@@ -30,7 +30,7 @@ function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, impl::
     )
 end
 
-expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp))
+expectedutility(r::AbstractRewardModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp))
 
 struct DGP <: AbstractDGP
     programdgps::Vector{ProgramDGP}
@@ -42,4 +42,4 @@ end
 
 numprograms(dgp::DGP) = length(dgp.programdgps)
 
-expectedutility(r::ExponentialUtilityModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for pdgp in dgp.programdgps)
+expectedutility(r::AbstractRewardModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for pdgp in dgp.programdgps)

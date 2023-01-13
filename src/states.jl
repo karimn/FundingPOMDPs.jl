@@ -19,8 +19,8 @@ end
 
 dgp(ps::ProgramCausalState) = ps.progdgp
 
-expectedutility(m::ExponentialUtilityModel, pcs::ProgramCausalState, a::Bool) = expectedutility(m, pcs.μ + (a ? pcs.τ : 0), pcs.σ)
-expectedutility(m::ExponentialUtilityModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs, implements(a, pcs))
+expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::Bool) = expectedutility(m, pcs.μ + (a ? pcs.τ : 0), pcs.σ)
+expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs, implements(a, pcs))
 
 getprogramid(ps::ProgramCausalState) = ps.programid
 
@@ -96,9 +96,9 @@ numprograms(s::CausalState) = length(s.programstates)
 
 getprogramstate(s::CausalState, id) = s.programstates[id]
 
-expectedutility(m::ExponentialUtilityModel, s::CausalState, a::AbstractFundingAction) = StatsBase.sum([expectedutility(m, progstate, a) for progstate in s.programstates])
+expectedutility(m::AbstractRewardModel, s::CausalState, a::AbstractFundingAction) = StatsBase.sum([expectedutility(m, progstate, a) for progstate in s.programstates])
 
-expectedutility(m::ExponentialUtilityModel, pc::ParticleFilters.ParticleCollection{CausalState}, a::AbstractFundingAction) = StatsBase.mean([expectedutility(m, s, a) for s in ParticleFilters.particles(pc)])
+expectedutility(m::AbstractRewardModel, pc::ParticleFilters.ParticleCollection{CausalState}, a::AbstractFundingAction) = StatsBase.mean([expectedutility(m, s, a) for s in ParticleFilters.particles(pc)])
 
 struct CausalStateDistribution
     dgp::AbstractDGP
