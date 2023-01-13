@@ -8,12 +8,8 @@ struct ProgramDGP <: AbstractProgramDGP
     programid::Int64
 end
 
-function ProgramDGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, programid::Int64) 
-    μ = Base.rand(rng, Distributions.Normal(0, hyperparam.mu_sd))
-    τ = Base.rand(rng, Distributions.Normal(hyperparam.tau_mean, hyperparam.tau_sd))
-    σ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.sigma_sd), 0, Inf))
-    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[1]), 0, Inf))
-    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[2]), 0, Inf))
+function ProgramDGP(hyperparam::AbstractHyperparam, rng::Random.AbstractRNG, programid::Int64) 
+    μ, τ, σ, η_μ, η_τ = Base.rand(rng, hyperparam)
 
     ProgramDGP(μ, τ, σ, η_μ, η_τ, programid) 
 end
@@ -36,7 +32,7 @@ struct DGP <: AbstractDGP
     programdgps::Vector{ProgramDGP}
 end
 
-function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64)
+function DGP(hyperparam::AbstractHyperparam, rng::Random.AbstractRNG, numprograms::Int64)
     return DGP([ProgramDGP(hyperparam, rng, i) for i in 1:numprograms]) 
 end
 

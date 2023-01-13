@@ -18,17 +18,48 @@ end
 
 const StudyHistory = Vector{StudyDataset}
 
-struct Hyperparam
+struct RegularizedHyperparam <: AbstractHyperparam
     mu_sd::Float64 
     tau_mean::Float64
     tau_sd::Float64 
     sigma_sd::Float64 
     eta_sd::Vector{Float64}
 
-    Hyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd)
+    RegularizedHyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd)
 end
 
-@model function sim_model(hyperparam::Hyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0, multilevel = true)
+function Base.rand(rng::Random.AbstractRNG, h::RegularizedHyperparam)
+    μ = Base.rand(rng, Distributions.Normal(0, h.mu_sd))
+    τ = Base.rand(rng, Distributions.Normal(h.tau_mean, h.tau_sd))
+    σ = Base.rand(rng, truncated(Distributions.Normal(0, h.sigma_sd), 0, Inf))
+    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[1]), 0, Inf))
+    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[2]), 0, Inf))
+
+    return μ, τ, σ, η_μ, η_τ
+end
+
+struct InvGammaHyperparam <: AbstractHyperparam
+    mu_sd::Float64 
+    tau_mean::Float64
+    tau_sd::Float64 
+    sigma_alpha::Float64 
+    sigma_theta::Float64 
+    eta_sd::Vector{Float64}
+
+    InvGammaHyperparam(; mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_sd)
+end
+
+function Base.rand(rng::Random.AbstractRNG, h::InvGammaHyperparam)
+    μ = Base.rand(rng, Distributions.Normal(0, h.mu_sd))
+    τ = Base.rand(rng, Distributions.Normal(h.tau_mean, h.tau_sd))
+    σ = Base.rand(rng, Distributions.InverseGamma(h.sigma_alpha, h.sigma_theta))
+    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[1]), 0, Inf))
+    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[2]), 0, Inf))
+
+    return μ, τ, σ, η_μ, η_τ
+end
+
+@model function sim_model(hyperparam::RegularizedHyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0, multilevel = true)
     if datasets === missing 
         n_study = n_sim_study 
         datasets = [StudyDataset(n_sim_obs) for i in 1:n_sim_study]
@@ -64,12 +95,12 @@ end
 end
 
 struct TuringModel <: AbstractBayesianModel 
-    hyperparam::Hyperparam
+    hyperparam::RegularizedHyperparam
     iter
     chains
     multilevel::Bool
 
-    TuringModel(hyperparam::Hyperparam; iter = 500, chains = 4, multilevel = true) = new(hyperparam, iter, chains, multilevel)
+    TuringModel(hyperparam::RegularizedHyperparam; iter = 500, chains = 4, multilevel = true) = new(hyperparam, iter, chains, multilevel)
 end
 
 function sample(m::TuringModel, datasets::Vector{StudyDataset})
