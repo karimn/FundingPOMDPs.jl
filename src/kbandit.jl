@@ -3,7 +3,6 @@ struct KBanditFundingMDP{A <: AbstractFundingAction} <: MDP{CausalState, A}
     rewardmodel::AbstractRewardModel
     discount::Float64
     studysamplesize::Int64
-    #inference_hyperparam::Hyperparam
     dgp::AbstractDGP
     actionset_factory::AbstractActionSetFactory{A}
     rng::Random.AbstractRNG
@@ -57,8 +56,6 @@ end
 programbandits(m::KBanditFundingPOMDP) = [ProgramBanditWrapper(m, i) for i in 1:numprograms(m)] 
 
 mdp(m::KBanditFundingPOMDP) = m.mdp
-
-#hyperparam(m::KBanditFundingProblem) = mdp(m).inference_hyperparam
 
 numprograms(m::KBanditFundingProblem) = numprograms(mdp(m).dgp)
 
