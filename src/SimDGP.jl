@@ -23,17 +23,19 @@ struct RegularizedHyperparam <: AbstractHyperparam
     tau_mean::Float64
     tau_sd::Float64 
     sigma_sd::Float64 
-    eta_sd::Vector{Float64}
+    #eta_sd::Vector{Float64}
+    eta_mu_sd::Float64
+    eta_tau_sd::Float64
 
-    RegularizedHyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd)
+    RegularizedHyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_mu_sd, eta_tau_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_mu_sd, eta_tau_sd)
 end
 
 function Base.rand(rng::Random.AbstractRNG, h::RegularizedHyperparam)
     μ = Base.rand(rng, Distributions.Normal(0, h.mu_sd))
     τ = Base.rand(rng, Distributions.Normal(h.tau_mean, h.tau_sd))
     σ = Base.rand(rng, truncated(Distributions.Normal(0, h.sigma_sd), 0, Inf))
-    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[1]), 0, Inf))
-    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[2]), 0, Inf))
+    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_mu_sd), 0, Inf))
+    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_tau_sd), 0, Inf))
 
     return μ, τ, σ, η_μ, η_τ
 end
@@ -44,17 +46,22 @@ struct InvGammaHyperparam <: AbstractHyperparam
     tau_sd::Float64 
     sigma_alpha::Float64 
     sigma_theta::Float64 
-    eta_sd::Vector{Float64}
+    eta_mu_alpha::Float64
+    eta_mu_theta::Float64
+    eta_tau_alpha::Float64
+    eta_tau_theta::Float64
 
-    InvGammaHyperparam(; mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_sd)
+    function InvGammaHyperparam(; mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_mu_alpha, eta_mu_theta, eta_tau_alpha, eta_tau_theta) 
+        return new(mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_mu_alpha, eta_mu_theta, eta_tau_alpha, eta_tau_theta)
+    end
 end
 
 function Base.rand(rng::Random.AbstractRNG, h::InvGammaHyperparam)
     μ = Base.rand(rng, Distributions.Normal(0, h.mu_sd))
     τ = Base.rand(rng, Distributions.Normal(h.tau_mean, h.tau_sd))
     σ = Base.rand(rng, Distributions.InverseGamma(h.sigma_alpha, h.sigma_theta))
-    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[1]), 0, Inf))
-    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_sd[2]), 0, Inf))
+    η_μ = Base.rand(rng, Distributions.InverseGamma(h.eta_mu_alpha, h.eta_mu_theta))
+    η_τ = Base.rand(rng, Distributions.InverseGamma(h.eta_tau_alpha, h.eta_tau_theta))
 
     return μ, τ, σ, η_μ, η_τ
 end
@@ -71,12 +78,13 @@ end
     τ_toplevel ~ Normal(hyperparam.tau_mean, hyperparam.tau_sd)
     σ_toplevel ~ truncated(Normal(0, hyperparam.sigma_sd), 0, Inf)
 
+    η_toplevel = [0.0, 0.0] 
+
     if multilevel
-        η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_sd[i]), 0, Inf) for i in 1:2])
+        η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_mu_sd), 0, Inf), truncated(Normal(0, hyperparam.eta_tau_sd), 0, Inf)])
         μ_study ~ filldist(Normal(μ_toplevel, η_toplevel[1]), n_study)
         τ_study ~ filldist(Normal(τ_toplevel, η_toplevel[2]), n_study)
     else
-        η_toplevel = [0.0, 0.0] 
         μ_study = μ_toplevel
         τ_study = τ_toplevel
     end
