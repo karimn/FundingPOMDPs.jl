@@ -40,7 +40,7 @@ export EvalObservation, getdatasets
 export AbstractRewardModel 
 export ExponentialUtilityModel, RiskNeutralUtilityModel, expectedutility, utility
 export AbstractFundingAction 
-export ImplementEvalAction, ImplementOnlyAction, SeparateImplementEvalAction
+export ImplementEvalAction, ImplementOnlyAction, SeparateImplementEvalAction, implements, evaluates
 export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
 export actions
 export KBanditFundingMDP, KBanditFundingPOMDP
