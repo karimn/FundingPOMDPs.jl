@@ -1,5 +1,3 @@
-abstract type AbstractHyperparam end
-
 abstract type AbstractBelief end
 abstract type AbstractBayesianModel end
 

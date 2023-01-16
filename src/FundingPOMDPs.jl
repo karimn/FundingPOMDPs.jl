@@ -32,7 +32,7 @@ include("kbandit.jl")
 include("solvers.jl")
 include("particles.jl")
 
-export StudyDataset, AbstractHyperparam, RegularizedHyperparam, InvGammaHyperparam, sim_model
+export StudyDataset, Priors, sim_model 
 export AbstractDGP, AbstractProgramDGP, AbstractState 
 export DGP, ProgramDGP, CausalState
 export AbstractEvalObservation
@@ -45,7 +45,7 @@ export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
 export actions
 export KBanditFundingMDP, KBanditFundingPOMDP
 export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
-export numprograms, initialbelief, rewardmodel, hyperparam, initialstate
+export numprograms, initialbelief, rewardmodel, initialstate
 export FullBayesianBelief, FullBayesianUpdater, ProgramBelief
 export utility_particles, programid
 export BayesianGreedySolver, BayesianGreedyPlanner

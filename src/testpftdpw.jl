@@ -36,7 +36,7 @@ end
 @everywhere begin 
     using .FundingPOMDPs
 
-    using DataFrames, StatsBase, Base.Threads
+    using DataFrames, StatsBase, Base.Threads, Distributions
 
     import Random, Serialization
     import POMDPs, POMDPTools, POMDPSimulators
@@ -53,11 +53,23 @@ const NUM_SIM_STEPS = parse(Int, args["--numsteps"])
 const NUM_TURING_MODEL_ITER = 1_000
 const NUM_FILTER_PARTICLES = 2_000
 
-dgp_hyperparam = InvGammaHyperparam(
-    mu_sd = 1.0, tau_mean = 0.0, tau_sd = 0.125, sigma_alpha = 18.5, sigma_theta = 30, eta_mu_alpha = 26.4, eta_mu_theta = 20, eta_tau_alpha = 26.4, eta_tau_theta = 20 
+dgp_priors = Priors(
+    μ = Normal(0, 1.0),
+    τ = Normal(0, 0.125),
+    σ = InverseGamma(18.5, 30),
+    η_μ = InverseGamma(26.4, 20),
+    η_τ = InverseGamma(26.4, 20)
+    #mu_sd = 1.0, tau_mean = 0.0, tau_sd = 0.125, sigma_alpha = 18.5, sigma_theta = 30, eta_mu_alpha = 26.4, eta_mu_theta = 20, eta_tau_alpha = 26.4, eta_tau_theta = 20 
 )
 
-inference_hyperparam = RegularizedHyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.25, sigma_sd = 5.0, eta_mu_sd = 2, eta_tau_sd = 2)
+inference_priors = Priors(
+    μ = Normal(0, 2.0),
+    τ = Normal(0, 0.25),
+    σ = truncated(Normal(0, 5.0), 0, Inf),
+    η_μ = truncated(Normal(0, 2.0), 0, Inf),
+    η_τ = truncated(Normal(0, 2.0), 0, Inf)
+#    mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.25, sigma_sd = 5.0, eta_mu_sd = 2, eta_tau_sd = 2
+)
 
 util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(1.0)
 
@@ -80,7 +92,7 @@ dpfdpw_solver = MCTS.DPWSolver(
     rng = RNG 
 )
 
-bayes_model = TuringModel(inference_hyperparam; iter = NUM_TURING_MODEL_ITER)
+bayes_model = TuringModel(inference_priors; iter = NUM_TURING_MODEL_ITER)
 bayes_updater = FullBayesianUpdater(RNG, bayes_model)
 
 #naive_bayes_model = TuringModel(inference_hyperparam; multilevel = false)
@@ -92,7 +104,7 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
-    pftdpw_dgp = DGP(dgp_hyperparam, dgp_rng, NUM_PROGRAMS)
+    pftdpw_dgp = DGP(dgp_priors, dgp_rng, NUM_PROGRAMS)
     greedy_dgp = deepcopy(pftdpw_dgp)
 
     init_s = Base.rand(RNG, pftdpw_dgp; state_chain_length = NUM_SIM_STEPS)
