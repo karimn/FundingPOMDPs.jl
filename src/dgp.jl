@@ -8,12 +8,8 @@ struct ProgramDGP <: AbstractProgramDGP
     programid::Int64
 end
 
-function ProgramDGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, programid::Int64) 
-    μ = Base.rand(rng, Distributions.Normal(0, hyperparam.mu_sd))
-    τ = Base.rand(rng, Distributions.Normal(hyperparam.tau_mean, hyperparam.tau_sd))
-    σ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.sigma_sd), 0, Inf))
-    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[1]), 0, Inf))
-    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, hyperparam.eta_sd[2]), 0, Inf))
+function ProgramDGP(hyperparam::AbstractHyperparam, rng::Random.AbstractRNG, programid::Int64) 
+    μ, τ, σ, η_μ, η_τ = Base.rand(rng, hyperparam)
 
     ProgramDGP(μ, τ, σ, η_μ, η_τ, programid) 
 end
@@ -22,7 +18,7 @@ Base.show(io::IO, pdgp::ProgramDGP) = Printf.@printf(io, "ProgramDGP(μ = %.2f, 
 
 getprogramid(pd::ProgramDGP) = pd.programid
 
-function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, impl::Bool) 
+function expectedutility(r::AbstractRewardModel, progdgp::ProgramDGP, impl::Bool) 
     return expectedutility(
         r, 
         progdgp.μ + (impl ? progdgp.τ : 0), 
@@ -30,16 +26,16 @@ function expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, impl::
     )
 end
 
-expectedutility(r::ExponentialUtilityModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp))
+expectedutility(r::AbstractRewardModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp))
 
 struct DGP <: AbstractDGP
     programdgps::Vector{ProgramDGP}
 end
 
- function DGP(hyperparam::Hyperparam, rng::Random.AbstractRNG, numprograms::Int64)
+function DGP(hyperparam::AbstractHyperparam, rng::Random.AbstractRNG, numprograms::Int64)
     return DGP([ProgramDGP(hyperparam, rng, i) for i in 1:numprograms]) 
 end
 
 numprograms(dgp::DGP) = length(dgp.programdgps)
 
-expectedutility(r::ExponentialUtilityModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for pdgp in dgp.programdgps)
+expectedutility(r::AbstractRewardModel, dgp::DGP, a::AbstractFundingAction) = sum(expectedutility(r, pdgp, a) for pdgp in dgp.programdgps)

@@ -18,17 +18,55 @@ end
 
 const StudyHistory = Vector{StudyDataset}
 
-struct Hyperparam
+struct RegularizedHyperparam <: AbstractHyperparam
     mu_sd::Float64 
     tau_mean::Float64
     tau_sd::Float64 
     sigma_sd::Float64 
-    eta_sd::Vector{Float64}
+    #eta_sd::Vector{Float64}
+    eta_mu_sd::Float64
+    eta_tau_sd::Float64
 
-    Hyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_sd)
+    RegularizedHyperparam(; mu_sd, tau_mean, tau_sd, sigma_sd, eta_mu_sd, eta_tau_sd) = new(mu_sd, tau_mean, tau_sd, sigma_sd, eta_mu_sd, eta_tau_sd)
 end
 
-@model function sim_model(hyperparam::Hyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0)
+function Base.rand(rng::Random.AbstractRNG, h::RegularizedHyperparam)
+    μ = Base.rand(rng, Distributions.Normal(0, h.mu_sd))
+    τ = Base.rand(rng, Distributions.Normal(h.tau_mean, h.tau_sd))
+    σ = Base.rand(rng, truncated(Distributions.Normal(0, h.sigma_sd), 0, Inf))
+    η_μ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_mu_sd), 0, Inf))
+    η_τ = Base.rand(rng, truncated(Distributions.Normal(0, h.eta_tau_sd), 0, Inf))
+
+    return μ, τ, σ, η_μ, η_τ
+end
+
+struct InvGammaHyperparam <: AbstractHyperparam
+    mu_sd::Float64 
+    tau_mean::Float64
+    tau_sd::Float64 
+    sigma_alpha::Float64 
+    sigma_theta::Float64 
+    eta_mu_alpha::Float64
+    eta_mu_theta::Float64
+    eta_tau_alpha::Float64
+    eta_tau_theta::Float64
+
+    function InvGammaHyperparam(; mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_mu_alpha, eta_mu_theta, eta_tau_alpha, eta_tau_theta) 
+        return new(mu_sd, tau_mean, tau_sd, sigma_alpha, sigma_theta, eta_mu_alpha, eta_mu_theta, eta_tau_alpha, eta_tau_theta)
+    end
+end
+
+function Base.rand(rng::Random.AbstractRNG, h::InvGammaHyperparam)
+    μ = Base.rand(rng, Distributions.Normal(0, h.mu_sd))
+    τ = Base.rand(rng, Distributions.Normal(h.tau_mean, h.tau_sd))
+    σ = Base.rand(rng, Distributions.InverseGamma(h.sigma_alpha, h.sigma_theta))
+    η_μ = Base.rand(rng, Distributions.InverseGamma(h.eta_mu_alpha, h.eta_mu_theta))
+    η_τ = Base.rand(rng, Distributions.InverseGamma(h.eta_tau_alpha, h.eta_tau_theta))
+
+    return μ, τ, σ, η_μ, η_τ
+end
+
+@model function sim_model(hyperparam::RegularizedHyperparam, datasets = missing; n_sim_study = 0, n_sim_obs = 0, multilevel = true)
     if datasets === missing 
         n_study = n_sim_study 
         datasets = [StudyDataset(n_sim_obs) for i in 1:n_sim_study]
@@ -39,10 +77,17 @@ end
     μ_toplevel ~ Normal(0, hyperparam.mu_sd)
     τ_toplevel ~ Normal(hyperparam.tau_mean, hyperparam.tau_sd)
     σ_toplevel ~ truncated(Normal(0, hyperparam.sigma_sd), 0, Inf)
-    η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_sd[i]), 0, Inf) for i in 1:2])
 
-    μ_study ~ filldist(Normal(μ_toplevel, η_toplevel[1]), n_study)
-    τ_study ~ filldist(Normal(τ_toplevel, η_toplevel[2]), n_study)
+    η_toplevel = [0.0, 0.0] 
+
+    if multilevel
+        η_toplevel ~ arraydist([truncated(Normal(0, hyperparam.eta_mu_sd), 0, Inf), truncated(Normal(0, hyperparam.eta_tau_sd), 0, Inf)])
+        μ_study ~ filldist(Normal(μ_toplevel, η_toplevel[1]), n_study)
+        τ_study ~ filldist(Normal(τ_toplevel, η_toplevel[2]), n_study)
+    else
+        μ_study = μ_toplevel
+        τ_study = τ_toplevel
+    end
    
     for ds_index in 1:n_study
         for i in eachindex(datasets[ds_index].y_control) 
@@ -58,15 +103,16 @@ end
 end
 
 struct TuringModel <: AbstractBayesianModel 
-    hyperparam::Hyperparam
+    hyperparam::RegularizedHyperparam
     iter
     chains
+    multilevel::Bool
 
-    TuringModel(hyperparam::Hyperparam, iter = 500, chains = 4) = new(hyperparam, iter, chains)
+    TuringModel(hyperparam::RegularizedHyperparam; iter = 500, chains = 4, multilevel = true) = new(hyperparam, iter, chains, multilevel)
 end
 
 function sample(m::TuringModel, datasets::Vector{StudyDataset})
-    @pipe sim_model(m.hyperparam, datasets) |>
+    @pipe sim_model(m.hyperparam, datasets; multilevel = m.multilevel) |>
         Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains) |> 
         DataFrame(_) |>
         select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 

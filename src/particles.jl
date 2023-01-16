@@ -7,7 +7,7 @@ struct CausalStateParticleBelief <: AbstractBelief
     end
 end
 
-expectedutility(m::ExponentialUtilityModel, b::CausalStateParticleBelief, a::AbstractFundingAction) = sum(expectedutility(m, pb, a) for pb in b.progbeliefs)
+expectedutility(m::AbstractRewardModel, b::CausalStateParticleBelief, a::AbstractFundingAction) = sum(expectedutility(m, pb, a) for pb in b.progbeliefs)
 
 function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBelief)
     dfs = map(cspb.progbeliefs) do pb
