@@ -8,7 +8,7 @@ struct ProgramCausalState <: AbstractProgramState
     programid::Int64
 end
 
-ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
+#ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
 
 function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP)
     μ_study = pd.μ + Base.rand(rng, Distributions.Normal(0, pd.η_μ))

@@ -7,6 +7,8 @@ struct CausalStateParticleBelief <: AbstractBelief
     end
 end
 
+programbeliefs(b::AbstractBelief) = b.progbeliefs
+
 expectedutility(m::AbstractRewardModel, b::CausalStateParticleBelief, a::AbstractFundingAction) = sum(expectedutility(m, pb, a) for pb in b.progbeliefs)
 
 function Base.convert(::Type{DataFrames.DataFrame}, cspb::CausalStateParticleBelief)
@@ -52,7 +54,8 @@ function POMDPs.update(updater::MultiBootstrapFilter, belief_old::CausalStatePar
     new_progbeliefs = copy(belief_old.progbeliefs)
 
     for (pid, po) in o.programobs
-        new_progbeliefs[pid] = ProgramBelief(POMDPs.update(updater.filters[pid], state_samples(new_progbeliefs[pid]), a, po), pid)
+        updated_belief = POMDPs.update(updater.filters[pid], state_samples(new_progbeliefs[pid]), a, po)
+        new_progbeliefs[pid] = ProgramBelief(updated_belief, pid)
     end
 
     return CausalStateParticleBelief(new_progbeliefs)
