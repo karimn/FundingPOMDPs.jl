@@ -13,7 +13,13 @@ struct ProgramBelief
 end
 
 function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64, rng::Random.AbstractRNG)
-    samples = sample(m, data)
+    ndatasets = length(data) 
+
+    logger = Logging.SimpleLogger(Logging.Error)
+    samples = Logging.with_logger(logger) do 
+        sample(m, data)
+    end
+
     sample_cols = names(samples)
 
     η = "η_toplevel[1]" in sample_cols && "η_toplevel[1]" in sample_cols ? (samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"]) : (0.0, 0.0) 

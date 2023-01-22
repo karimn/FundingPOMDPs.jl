@@ -85,7 +85,7 @@ end
 
 function sample(m::TuringModel, datasets::Vector{StudyDataset})
     @pipe sim_model(m.priors, datasets; multilevel = m.multilevel) |>
-        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains) |> 
+        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains; progress = false) |> 
         DataFrame(_) |>
         select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 
 end 
