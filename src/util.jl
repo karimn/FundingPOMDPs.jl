@@ -1,3 +1,9 @@
+function get_states_data(sv::Vector{CausalState})
+    @pipe DataFrame.(sv) |>
+        select!.(_, :programid, :μ, :τ, :σ) |>
+        vcat(_..., source = :step)
+end
+
 function get_rewards_data(sb::Vector{R}, actlist::Vector{T}, util_model::AbstractRewardModel) where {R <: Rewardable, T <: AbstractFundingAction}
     reward_data = @pipe map(enumerate(sb)) do step_state
         DataFrame(
@@ -13,10 +19,12 @@ function get_rewards_data(sb::Vector{R}, actlist::Vector{T}, util_model::Abstrac
     return reward_data
 end
 
-function get_beliefs_data(bv::Vector{B}) where B <: AbstractBelief
+function get_beliefs_data(bv::Vector{B}; forecast = true) where B <: AbstractBelief
+    samples_fun = forecast ? state_samples : last_state_samples
+    
     @pipe map(enumerate(bv)) do b
-        @pipe b[2].progbeliefs |>
-            [DataFrame(ParticleFilters.particles(spb.state_samples)) for spb in _] |>
+        @pipe programbeliefs(b[2]) |>
+            DataFrame.(ParticleFilters.particles.(samples_fun.(_))) |>
             select!.(_, :programid, :μ, :τ, :σ) |>
             vcat(_...) |>
             @transform!(_, :step = b[1])
