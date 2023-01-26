@@ -139,7 +139,7 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
         curr_state = init_s 
     )
 
-    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, FullBayesianBelief}(greedy_mdp, bayes_b, bayes_model)
+    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, FullBayesianBelief}(greedy_mdp, bayes_b) #, bayes_model)
 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 
