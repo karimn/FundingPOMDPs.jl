@@ -36,7 +36,7 @@ include("util.jl")
 
 export Rewardable
 export StudyDataset, Priors, sim_model 
-export AbstractDGP, AbstractProgramDGP, AbstractState 
+export AbstractDGP, AbstractProgramDGP, AbstractState, expectedlevel
 export DGP, ProgramDGP, CausalState, dgp
 export AbstractEvalObservation
 export EvalObservation, getdatasets
