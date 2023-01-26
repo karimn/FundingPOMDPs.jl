@@ -71,7 +71,7 @@ inference_priors = Priors(
 #    mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.25, sigma_sd = 5.0, eta_mu_sd = 2, eta_tau_sd = 2
 )
 
-util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(1.0)
+util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(0.75)
 
 select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRAMS, 1)
 explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1, util_model)

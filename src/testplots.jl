@@ -15,7 +15,7 @@ Gadfly.set_default_plot_size(60cm, 40cm)
 
 file_suffix = ""
 
-util_model = ExponentialUtilityModel(0.5)
+util_model = ExponentialUtilityModel(0.75)
 #util_model = RiskNeutralUtilityModel()
 
 greedy_sim_data = deserialize("src/greedy_sim$(file_suffix).jls")
