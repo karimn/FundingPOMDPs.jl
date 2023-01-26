@@ -101,7 +101,7 @@ bayes_updater = FullBayesianUpdater(RNG, bayes_model)
 pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
-for sim_index in 1:NUM_SIM
+@threads for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
     pftdpw_dgp = DGP(dgp_priors, dgp_rng, NUM_PROGRAMS)
