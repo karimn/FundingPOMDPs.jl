@@ -171,8 +171,8 @@ pftdpw_sim_data = run_fun(get_sim_data, pftdpw_sims; show_progress = true)
 
 if args["--append"]
     try
-        global greedy_sim_data = vcat(greedy_sim_data, Serialization.deserialize(args["<greedy file>"]))
-        global pftdpw_sim_data = vcat(pftdpw_sim_data, Serialization.deserialize(args["<pftdpw file>"]))
+        global greedy_sim_data = vcat(Serialization.deserialize(args["<greedy file>"]), greedy_sim_data)
+        global pftdpw_sim_data = vcat(Serialization.deserialize(args["<pftdpw file>"]), pftdpw_sim_data)
     catch 
         # Don't do anything; the file probably doesn't exist
     end
