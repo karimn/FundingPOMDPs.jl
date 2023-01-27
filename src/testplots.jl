@@ -11,21 +11,60 @@ begin
     import StatsPlots
 end
 
-Gadfly.set_default_plot_size(60cm, 40cm)
+Gadfly.set_default_plot_size(50cm, 40cm)
 
-file_suffix = ""
+file_suffix = "_0.25"
 
-util_model = ExponentialUtilityModel(0.75)
+util_model = ExponentialUtilityModel(0.25)
 #util_model = RiskNeutralUtilityModel()
 
 greedy_sim_data = deserialize("src/greedy_sim$(file_suffix).jls")
 pftdpw_sim_data = deserialize("src/pftdpw_sim$(file_suffix).jls")
 
-util_diff = map((g, p) -> p - g, greedy_sim_data.actual_reward, pftdpw_sim_data.actual_reward)
-util_diff_mean = [mean(a) for a in invert(util_diff)]
-util_diff_quant = @pipe [quantile(a, [0.25, 0.5, 0.75]) for a in invert(util_diff)] |>
-    DataFrame(invert(_), [:lb, :med, :ub]) |>
-    insertcols!(_, :step => 1:nrow(_))
+calculate_util_diff(planned_reward, baseline_reward) = map((p, n) -> p - n, planned_reward, baseline_reward)  
+
+function calculate_util_diff_summ(util_diff)
+    util_diff_mean = [mean(a) for a in invert(util_diff)]
+    util_diff_quant = @pipe [quantile(skipmissing(a), [0.25, 0.5, 0.75]) for a in invert(util_diff)] |>
+        DataFrame(invert(_), [:lb, :med, :ub]) |>
+        insertcols!(_, :step => 1:nrow(_), :mean => util_diff_mean)
+
+    return util_diff_quant
+end
+
+do_nothing_reward = begin 
+    do_nothing = ImplementEvalAction()
+    [expectedutility.(Ref(util_model), states[Not(end)], Ref(do_nothing)) for states in greedy_sim_data.state]
+end
+
+util_diff_summ = @pipe [greedy_sim_data.actual_reward, pftdpw_sim_data.actual_reward] |> 
+    (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(do_nothing_reward)) |>
+    vcat(_...; source = :algo => ["greedy", "planned"])
+
+plot(
+    util_diff_summ, x = :step, 
+    layer(y = :mean, color = :algo, linestyle = [:dash], Geom.point, Geom.line),
+    layer(y = :med, ymin = :lb, ymax = :ub,  color = :algo,alpha = [0.75], Geom.line, Geom.ribbon),
+    layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
+    Scale.x_discrete, Guide.yticks(ticks = -0.2:0.05:0.4) 
+)
+
+#=
+@pipe map(["_0.25", "_0.75"]) do suffix
+    [deserialize("src/pftdpw_sim$(suffix).jls").actual_reward, deserialize("src/greedy_sim$(suffix).jls").actual_reward]
+end |>
+    invert(_) |>
+    (calculate_util_diff_summ ∘ calculate_util_diff).(_...) |> 
+    vcat(_...; source = :alpha => ["0.25", "0.75"]) |> 
+    plot(
+        _, x = :step, 
+        layer(y = :mean, color = :alpha, linestyle = [:dash], Geom.point, Geom.line),
+        layer(y = :med, ymin = :lb, ymax = :ub,  color = :alpha, alpha = [0.75], Geom.line, Geom.ribbon),
+        #layer(_, x = :step, y = :diff, group = :sim, alpha = [0.25], Geom.line),
+        layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
+        Scale.x_discrete, Guide.yticks(ticks = -1:0.1:1) 
+    )
+=#
 
 obs_reward = @pipe pairs((greedy = greedy_sim_data.actual_reward, planned = pftdpw_sim_data.actual_reward)) |>
     DataFrame(_) |>
@@ -55,28 +94,19 @@ last_b_data_planned = @pipe get_beliefs_data.(pftdpw_sim_data.belief; forecast =
 
 summarize_b_data(b_data, probs = [0.1, 0.5, 0.9]) = @pipe b_data |>
     groupby(_, Cols(:sim, :programid, :step)) |>
-    @combine(_, :per = probs, :quant_τ = quantile(:τ, probs)) |>
-    unstack(_, :per, :quant_τ; renamecols = c -> "per_$c") 
+    vcat(
+        @combine(_, :per = string.("μ_per_", probs), :quant = quantile(:μ, probs)),
+        @combine(_, :per = string.("τ_per_", probs), :quant = quantile(:τ, probs)) 
+    ) |> 
+    unstack(_, :per, :quant) #; renamecols = c -> "per_$c") 
 
 b_data_greedy_summ = summarize_b_data(b_data_greedy) 
-b_data_planned_summ = summarize_b_data(b_data_planned)  
+b_data_planned_summ = summarize_b_data(b_data_planned) 
 last_b_data_greedy_summ = summarize_b_data(last_b_data_greedy) 
 last_b_data_planned_summ = summarize_b_data(last_b_data_planned)  
 
 s_data = @pipe get_states_data.(greedy_sim_data.state) |>
     vcat(_..., source = :sim)
-
-# Plot sim util diff and median util diff
-@pipe [DataFrame(sim = i, step = 1:length(util_diff[i]), diff = util_diff[i]) for i in 1:length(util_diff)] |>
-    vcat(_...) |>
-    #@subset(_, :sim .== 13) |>
-    plot(
-        layer(util_diff_quant, x = :step, y = :med, ymin = :lb, ymax = :ub,  color = [colorant"red"], alpha = [0.75], Geom.line, Geom.ribbon),
-        layer(y = util_diff_mean, color = [colorant"darkgreen"], Geom.point, Geom.line),
-        layer(_, x = :step, y = :diff, group = :sim, alpha = [0.25], Geom.line),
-        layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
-        Scale.x_discrete, Guide.yticks(ticks = -5:0.5:5) 
-    )
 
 actlist = @pipe SelectProgramSubsetActionSetFactory(nprograms, 1) |> actions(_).actions
 
@@ -115,7 +145,7 @@ pdgps_data = @pipe pftdpw_sim_data.state |>
     vcat(_...)
 
 begin
-    sim = 8 
+    sim = 5 
     
     obs_reward_plot = @pipe obs_reward |>
         @rsubset(_, :sim in sim) |>
@@ -152,24 +182,36 @@ begin
             Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms)
         )
 
-    belief_plot = @pipe obs_act |>
+    belief_plot_data = @pipe obs_act |>
         @subset(_, :sim .== sim, :action_type .== "eval_programs") |>
         @transform!(_, :step = :step .+ 1) |>
         vcat(
             @subset(b_data_planned_summ, :sim .== sim, :step .== 1),
             rightjoin(b_data_planned_summ, _, on = [:sim, :step, (:programid => :pid)]);
             cols = :union
-        ) |>
+        )
+        
+    μ_belief_plot = @pipe belief_plot_data |> 
         plot(
-            _, x = :step, ymin = "per_0.1", ymax = "per_0.9", color = :programid,
+            _, x = :step, ymin = "μ_per_0.1", ymax = "μ_per_0.9", color = :programid,
+            layer(alpha = [0.2], Geom.ribbon, Stat.dodge),
+            layer(Geom.yerrorbar, Stat.dodge, style(line_width = 1mm, errorbar_cap_length=0mm)), 
+            layer(@subset(s_data, :sim .== sim), y = :μ, Geom.line, Stat.dodge),
+            Scale.discrete_color, Scale.x_discrete(levels = 1:(nsteps + 1)), Guide.ylabel("μ"),
+            Guide.title("Predicted States")
+        )
+
+    τ_belief_plot = @pipe belief_plot_data |> 
+        plot(
+            _, x = :step, ymin = "τ_per_0.1", ymax = "τ_per_0.9", color = :programid,
             layer(alpha = [0.2], Geom.ribbon, Stat.dodge),
             layer(Geom.yerrorbar, Stat.dodge, style(line_width = 1mm, errorbar_cap_length=0mm)), 
             layer(@subset(s_data, :sim .== sim), y = :τ, Geom.line, Stat.dodge),
             Scale.discrete_color, Scale.x_discrete(levels = 1:(nsteps + 1)), Guide.ylabel("τ"),
             Guide.title("Predicted States")
         )
-        
-    last_belief_plot = @pipe obs_act |>
+
+    last_belief_plot_data = @pipe obs_act |>
         @subset(_, :sim .== sim, :action_type .== "eval_programs") |>
         @transform!(_, :step = :step .+ 1) |>
         vcat(
@@ -177,9 +219,21 @@ begin
             rightjoin(last_b_data_planned_summ, _, on = [:sim, :step, (:programid => :pid)]);
             cols = :union
         ) |>
-        @transform!(_, :step = :step .- 1) |>
+        @transform!(_, :step = :step .- 1)
+        
+    μ_last_belief_plot = @pipe last_belief_plot_data |> 
         plot(
-            _, x = :step, y = "per_0.5", ymin = "per_0.1", ymax = "per_0.9", color = :programid,
+            _, x = :step, y = "μ_per_0.5", ymin = "μ_per_0.1", ymax = "μ_per_0.9", color = :programid,
+            layer(Geom.line),
+            layer(alpha = [0.8], Geom.ribbon),
+            layer(Geom.yerrorbar, style(line_width = 1mm, errorbar_cap_length=0mm)), 
+            Scale.discrete_color, Scale.x_discrete(levels = 0:nsteps), Guide.ylabel("μ"),
+            Guide.title("Last States")
+        )
+        
+    τ_last_belief_plot = @pipe last_belief_plot_data |>
+        plot(
+            _, x = :step, y = "τ_per_0.5", ymin = "τ_per_0.1", ymax = "τ_per_0.9", color = :programid,
             layer(Geom.line),
             layer(alpha = [0.8], Geom.ribbon),
             layer(Geom.yerrorbar, style(line_width = 1mm, errorbar_cap_length=0mm)), 
@@ -192,6 +246,7 @@ begin
         @rselect!(_, :programid, :τ = rand(Distributions.Normal(:τ, :η_τ), 10000)) |>
         DataFrames.flatten(_, :τ) 
 
+    #=
     first_belief_hist = @pipe pairs((planned = b_data_planned, greedy = b_data_greedy)) |>
         [@transform(v, :policy = k) for (k, v) in _] |>
         vcat(_...) |>
@@ -206,11 +261,13 @@ begin
             layer(τ_density_data, x = :programid, y = :τ, alpha = [0.1], Geom.violin),
             Scale.x_discrete
         )
+    =#
 
-    title(gridstack([obs_reward_plot   obs_cumul_reward_plot; 
-                     reward_plot       cumul_reward_plot; 
-                     act_plot          belief_plot; 
-                     first_belief_hist last_belief_plot]), "Simulation $sim")
+    title(gridstack([obs_reward_plot     obs_cumul_reward_plot; 
+                     reward_plot         cumul_reward_plot; 
+                     act_plot            plot();
+                     μ_belief_plot       τ_belief_plot; 
+                     μ_last_belief_plot  τ_last_belief_plot]), "Simulation $sim")
 end
 
 #@pipe map(0:0.1:2) do α
@@ -222,3 +279,22 @@ end
 end |>
     vcat(_...) |>
     plot(_, x = :x , y = :u, color = :α, Geom.line, Coord.cartesian(fixed = true))
+
+pb2 = programbeliefs(pftdpw_sim_data.belief[4][12])[2]
+expectedutility(util_model, pb2, false)
+expectedutility(util_model, pb2, true)
+
+pb2d_data = @pipe pb2 |> 
+    state_samples(_) |>
+    particles(_) |> 
+    [DataFrame(implemented = a, meanlevel = expectedlevel.(_, a), meanutil = expectedutility.(Ref(util_model), _, a)) for a in (false, true) ] |> 
+    vcat(_...)  
+
+@pipe pb2d_data |> 
+    groupby(_, :implemented) |> 
+    @combine(_, :lvl_std = std(:meanlevel), :eu_std = std(:meanutil))
+
+
+plot(pb2d_data, x = :meanlevel, y = :meanutil, color = :implemented, Geom.density2d)
+plot(pb2d_data, x = :meanutil, color = :implemented, Geom.density)
+plot(pb2d_data, x = :meanlevel, color = :implemented, Geom.density)
