@@ -13,7 +13,7 @@ end
 
 Gadfly.set_default_plot_size(50cm, 40cm)
 
-file_suffix = "_0.25"
+file_suffix = "_0.25_2"
 
 util_model = ExponentialUtilityModel(0.25)
 #util_model = RiskNeutralUtilityModel()
@@ -161,7 +161,7 @@ pdgps_data = @pipe pftdpw_sim_data.state |>
     vcat(_...)
 
 begin
-    sim = 5 
+    sim = 1 
     
     obs_reward_plot = @pipe obs_reward |>
         @rsubset(_, :sim in sim) |>
