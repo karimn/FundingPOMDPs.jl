@@ -21,7 +21,13 @@ util_model = ExponentialUtilityModel(0.25)
 greedy_sim_data = deserialize("src/greedy_sim$(file_suffix).jls")
 pftdpw_sim_data = deserialize("src/pftdpw_sim$(file_suffix).jls")
 
-calculate_util_diff(planned_reward, baseline_reward) = map((p, n) -> p - n, planned_reward, baseline_reward)  
+function calculate_util_diff(planned_reward, baseline_reward; accum = false)  
+    if accum
+        map((p, n) -> cumsum(p) - cumsum(n), planned_reward, baseline_reward)  
+    else
+        map((p, n) -> p - n, planned_reward, baseline_reward)  
+    end
+end
 
 function calculate_util_diff_summ(util_diff)
     util_diff_mean = [mean(a) for a in invert(util_diff)]
@@ -37,16 +43,26 @@ do_nothing_reward = begin
     [expectedutility.(Ref(util_model), states[Not(end)], Ref(do_nothing)) for states in greedy_sim_data.state]
 end
 
+pvg_util_diff_summ = (calculate_util_diff_summ ∘ calculate_util_diff)(pftdpw_sim_data.actual_reward, greedy_sim_data.actual_reward; accum = true) 
 util_diff_summ = @pipe [greedy_sim_data.actual_reward, pftdpw_sim_data.actual_reward] |> 
-    (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(do_nothing_reward)) |>
+    (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(do_nothing_reward); accum = true) |>
     vcat(_...; source = :algo => ["greedy", "planned"])
 
-plot(
-    util_diff_summ, x = :step, 
-    layer(y = :mean, color = :algo, linestyle = [:dash], Geom.point, Geom.line),
-    layer(y = :med, ymin = :lb, ymax = :ub,  color = :algo,alpha = [0.75], Geom.line, Geom.ribbon),
-    layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
-    Scale.x_discrete, Guide.yticks(ticks = -0.2:0.05:0.4) 
+vstack(
+    plot(
+        util_diff_summ, x = :step, 
+        layer(y = :mean, color = :algo, linestyle = [:dash], Geom.point, Geom.line),
+        layer(y = :med, ymin = :lb, ymax = :ub,  color = :algo,alpha = [0.75], Geom.line, Geom.ribbon),
+        layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
+        Scale.x_discrete, Guide.yticks(ticks = -0.1:0.1:3) 
+    ),
+    plot(
+        pvg_util_diff_summ, x = :step, 
+        layer(y = :mean, linestyle = [:dash], Geom.point, Geom.line),
+        layer(y = :med, ymin = :lb, ymax = :ub, alpha = [0.75], Geom.line, Geom.ribbon),
+        layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
+        Scale.x_discrete, Guide.yticks(ticks = -0.3:0.1:2) 
+    )
 )
 
 #=
