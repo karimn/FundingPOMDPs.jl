@@ -8,7 +8,7 @@ struct ProgramCausalState <: AbstractProgramState
     programid::Int64
 end
 
-ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
+#ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
 
 function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP)
     μ_study = pd.μ + Base.rand(rng, Distributions.Normal(0, pd.η_μ))
@@ -19,7 +19,10 @@ end
 
 dgp(ps::ProgramCausalState) = ps.progdgp
 
-expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::Bool) = expectedutility(m, pcs.μ + (a ? pcs.τ : 0), pcs.σ)
+expectedlevel(pcs::ProgramCausalState, a::Bool) = pcs.μ + (a ? pcs.τ : 0)
+expectedlevel(pcs::ProgramCausalState, a::AbstractFundingAction) = expectedlevel(pcs, implements(a, pcs)) 
+
+expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::Bool) = expectedutility(m, expectedlevel(pcs, a), pcs.σ)
 expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs, implements(a, pcs))
 
 getprogramid(ps::ProgramCausalState) = ps.programid

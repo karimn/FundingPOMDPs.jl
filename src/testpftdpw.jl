@@ -2,7 +2,7 @@ doc = """
 Funding POMDP simulation.
 
 Usage:
-    testpftdpw.jl <greedy file> <pftdpw file> [options]
+    testpftdpw.jl <greedy file> <planned file> [options] [--risk-neutral | --alpha=<alpha>]
 
 Options:
     --append, -a                               Append data
@@ -11,7 +11,9 @@ Options:
     --numsteps=<numsteps>, -t <numsteps>       Number of steps [default: 10]
     --numprocs=<nprocs>                        Number of parallel processes [default: 5]
     --depth=<depth>, -d <depth>                Planning depth [default: 10]
+    --alpha=<alpha>                            Exponential utility function alpha parameter [default: 1]
     --risk-neutral                             Risk neutral utility
+    --plan-algo=<algo>                         Planning algorithm (pftdpw, random) [default: pftdpw]
 """
 
 import DocOpt
@@ -36,7 +38,7 @@ end
 @everywhere begin 
     using .FundingPOMDPs
 
-    using DataFrames, StatsBase, Base.Threads
+    using DataFrames, StatsBase, Base.Threads, Distributions
 
     import Random, Serialization
     import POMDPs, POMDPTools, POMDPSimulators
@@ -53,13 +55,25 @@ const NUM_SIM_STEPS = parse(Int, args["--numsteps"])
 const NUM_TURING_MODEL_ITER = 1_000
 const NUM_FILTER_PARTICLES = 2_000
 
-dgp_hyperparam = InvGammaHyperparam(
-    mu_sd = 1.0, tau_mean = 0.0, tau_sd = 0.125, sigma_alpha = 18.5, sigma_theta = 30, eta_mu_alpha = 26.4, eta_mu_theta = 20, eta_tau_alpha = 26.4, eta_tau_theta = 20 
+dgp_priors = Priors(
+    μ = Normal(0, 1.0),
+    τ = Normal(0, 0.5),
+    #σ = truncated(Normal(0, 0.5), 0, Inf),
+    σ = InverseGamma(18.5, 30),
+    η_μ = InverseGamma(26.4, 20),
+    η_τ = InverseGamma(26.4, 20)
 )
 
-inference_hyperparam = RegularizedHyperparam(mu_sd = 2.0, tau_mean = 0.0, tau_sd = 0.25, sigma_sd = 5.0, eta_mu_sd = 2, eta_tau_sd = 2)
+inference_priors = Priors(
+    μ = Normal(0, 2.0),
+    τ = Normal(0, 1),
+    #σ = truncated(Normal(0, 1.0), 0, Inf),
+    σ = truncated(Normal(0, 5.0), 0, Inf),
+    η_μ = truncated(Normal(0, 2.0), 0, Inf),
+    η_τ = truncated(Normal(0, 2.0), 0, Inf)
+)
 
-util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(1.0)
+util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(parse(Float64, args["--alpha"]))
 
 select_subset_actionset_factory = SelectProgramSubsetActionSetFactory(NUM_PROGRAMS, 1)
 explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1, util_model)
@@ -67,7 +81,7 @@ explore_only_actionset_factory = ExploreOnlyActionSetFactory(NUM_PROGRAMS, 1, 1,
 random_solver = POMDPTools.RandomSolver()
 greedy_solver = BayesianGreedySolver()
 
-dpfdpw_solver = MCTS.DPWSolver(
+pftdpw_solver = MCTS.DPWSolver(
     depth = parse(Int, args["--depth"]),
     exploration_constant = 25.0,
     n_iterations = 20, #100,
@@ -80,41 +94,41 @@ dpfdpw_solver = MCTS.DPWSolver(
     rng = RNG 
 )
 
-bayes_model = TuringModel(inference_hyperparam; iter = NUM_TURING_MODEL_ITER)
+bayes_model = TuringModel(inference_priors; iter = NUM_TURING_MODEL_ITER)
 bayes_updater = FullBayesianUpdater(RNG, bayes_model)
 
 #naive_bayes_model = TuringModel(inference_hyperparam; multilevel = false)
 #naive_bayes_updater = FullBayesianUpdater(RNG, bayes_model)
 
-pftdpw_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
+planned_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
-for sim_index in 1:NUM_SIM
+@threads for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
-    pftdpw_dgp = DGP(dgp_hyperparam, dgp_rng, NUM_PROGRAMS)
-    greedy_dgp = deepcopy(pftdpw_dgp)
+    planned_dgp = DGP(dgp_priors, dgp_rng, NUM_PROGRAMS)
+    greedy_dgp = deepcopy(planned_dgp)
 
-    init_s = Base.rand(RNG, pftdpw_dgp; state_chain_length = NUM_SIM_STEPS)
+    init_s = Base.rand(RNG, planned_dgp; state_chain_length = NUM_SIM_STEPS)
 
-    pftdpw_mdp = KBanditFundingMDP{SeparateImplementEvalAction}(
+    planned_mdp = KBanditFundingMDP{SeparateImplementEvalAction}(
         util_model,
         0.95,
         50,
-        pftdpw_dgp,
+        planned_dgp,
         explore_only_actionset_factory;
         curr_state = init_s
     )
 
-    pftdpw_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, FullBayesianBelief}(pftdpw_mdp, bayes_model)
+    planned_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, FullBayesianBelief}(planned_mdp, bayes_model)
 
-    particle_updater = MultiBootstrapFilter(pftdpw_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
-    bayes_b = initialbelief(pftdpw_pomdp)
+    particle_updater = MultiBootstrapFilter(planned_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
+    bayes_b = initialbelief(planned_pomdp)
     particle_b = POMDPs.initialize_belief(particle_updater, bayes_b)
 
-    belief_mdp = MCTS.GenerativeBeliefMDP(deepcopy(pftdpw_pomdp), particle_updater)
-    pftdpw_planner = POMDPs.solve(dpfdpw_solver, belief_mdp)
-    random_planner = POMDPs.solve(random_solver, pftdpw_pomdp)
+    belief_mdp = MCTS.GenerativeBeliefMDP(deepcopy(planned_pomdp), particle_updater)
+    pftdpw_planner = POMDPs.solve(pftdpw_solver, belief_mdp)
+    random_planner = POMDPs.solve(random_solver, planned_pomdp)
 
     greedy_mdp = KBanditFundingMDP{ImplementOnlyAction}(
         util_model,
@@ -125,15 +139,21 @@ for sim_index in 1:NUM_SIM
         curr_state = init_s 
     )
 
-    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, FullBayesianBelief}(greedy_mdp, bayes_b, bayes_model)
+    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, FullBayesianBelief}(greedy_mdp, bayes_b) #, bayes_model)
 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 
     greedy_sim_rng = Random.MersenneTwister()
-    pftdpw_sim_rng = copy(greedy_sim_rng)
+    planned_sim_rng = copy(greedy_sim_rng)
 
-    pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
-    #pftdpw_sims[sim_index] = POMDPSimulators.Sim(pftdpw_pomdp, random_planner, bayes_updater, bayes_b, init_s, rng = pftdpw_sim_rng, max_steps = NUM_SIM_STEPS)
+    if args["--plan-algo"] == "pftdpw"
+        planned_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = planned_sim_rng, max_steps = NUM_SIM_STEPS)
+    elseif args["--plan-algo"] == "random"
+        planned_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, random_planner, bayes_updater, bayes_b, init_s, rng = planned_sim_rng, max_steps = NUM_SIM_STEPS)
+    else
+        error("Unknown planning algorithm '$(args["--plan-algo"])'")
+    end
+
     greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, initialbelief(greedy_pomdp), init_s, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
 end
 
@@ -155,19 +175,25 @@ end
 run_fun = NUM_PROCS > 1 ? POMDPTools.run_parallel : POMDPTools.run
 
 greedy_sim_data = run_fun(get_sim_data, greedy_sims; show_progress = true)
-pftdpw_sim_data = run_fun(get_sim_data, pftdpw_sims; show_progress = true) 
+planned_sim_data = run_fun(get_sim_data, planned_sims; show_progress = true) 
 
 if args["--append"]
     try
-        global greedy_sim_data = vcat(greedy_sim_data, Serialization.deserialize(args["<greedy file>"]))
-        global pftdpw_sim_data = vcat(pftdpw_sim_data, Serialization.deserialize(args["<pftdpw file>"]))
+        global greedy_sim_data = vcat(Serialization.deserialize(args["<greedy file>"]), greedy_sim_data)
     catch 
-        # Don't do anything; the file probably doesn't exist
+        @warn "Output file doesn't exist -- creating new file" file = args["<greedy file>"]
     end
+
+    try
+        global planned_sim_data = vcat(Serialization.deserialize(args["<planned file>"]), planned_sim_data)
+    catch 
+        @warn "Output file doesn't exist -- creating new file" file = args["<planned file>"]
+    end
+
 end
 
 Serialization.serialize(args["<greedy file>"], greedy_sim_data)
-Serialization.serialize(args["<pftdpw file>"], pftdpw_sim_data)
+Serialization.serialize(args["<planned file>"], planned_sim_data)
 
 #x = Serialization.deserialize("greedy_sim_test.jls")
 #pftdpw_sim_data = Serialization.deserialize("pftdpw_sim.jls")

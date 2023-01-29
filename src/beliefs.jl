@@ -5,15 +5,22 @@ Base.length(b::AbstractBelief) = length(b.progbeliefs)
 
 struct ProgramBelief 
     state_samples::ParticleFilters.AbstractParticleBelief
+    last_observed_state_samples::Union{Nothing, ParticleFilters.AbstractParticleBelief}
     pid::Int64
     data::Vector{StudyDataset}
     posterior_summary_stats
-
-    ProgramBelief(state_samples::ParticleFilters.AbstractParticleBelief, pid::Int64; data::Vector{StudyDataset} = StudyDataset[], post_summary = nothing) = new(state_samples, pid, data, post_summary)
 end
 
+ProgramBelief(state_samples::ParticleFilters.AbstractParticleBelief, pid::Int64) = ProgramBelief(state_samples, nothing, pid, StudyDataset[], nothing)
+
 function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64, rng::Random.AbstractRNG)
-    samples = sample(m, data)
+    ndatasets = length(data) 
+
+    logger = Logging.SimpleLogger(Logging.Error)
+    samples = Logging.with_logger(logger) do 
+        sample(m, data)
+    end
+
     sample_cols = names(samples)
 
     η = "η_toplevel[1]" in sample_cols && "η_toplevel[1]" in sample_cols ? (samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"]) : (0.0, 0.0) 
@@ -21,10 +28,12 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, η..., pid)
     state_samples = ParticleFilters.ParticleCollection(Base.rand.(rng, pdgps))
 
+    last_observed_state = ParticleFilters.ParticleCollection(ProgramCausalState.(pdgps, samples[:, "μ_study[$ndatasets]"], samples[:, "τ_study[$ndatasets]"], samples.σ_toplevel, pid))
+
     #post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel), η...)
     post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel))
 
-    return ProgramBelief(state_samples, pid; data = data, post_summary = post_stats)
+    return ProgramBelief(state_samples, last_observed_state, pid, data, post_stats)
 end
 
 programid(pb::ProgramBelief) = pb.pid
@@ -40,6 +49,7 @@ function expectedutility(r::AbstractRewardModel, bpb::ProgramBelief, a::Union{Ab
 end
 
 state_samples(bpb::ProgramBelief) = bpb.state_samples
+last_state_samples(bpb::ProgramBelief) = bpb.last_observed_state_samples
 
 function Base.show(io::IO, pb::ProgramBelief) 
     if pb.posterior_summary_stats === nothing
@@ -47,7 +57,7 @@ function Base.show(io::IO, pb::ProgramBelief)
     else
         Printf.@printf(
             #io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f, E[η] = (%.2f, %.2f))", pb.posterior_summary_stats... 
-            io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] =  %.2f)", pb.posterior_summary_stats... 
+            io, "ProgramBelief({E[μ] = %.2f, E[τ] = %.2f, E[σ] = %.2f)", pb.posterior_summary_stats... 
         ) 
     end
 end

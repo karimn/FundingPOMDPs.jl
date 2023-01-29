@@ -1,19 +1,18 @@
-abstract type AbstractHyperparam end
+abstract type AbstractRewardModel end
+abstract type Rewardable end
 
-abstract type AbstractBelief end
+abstract type AbstractBelief <: Rewardable end
 abstract type AbstractBayesianModel end
 
-abstract type AbstractDGP end
-abstract type AbstractProgramDGP end
-abstract type AbstractState end
-abstract type AbstractProgramState end
+abstract type AbstractDGP <: Rewardable end
+abstract type AbstractProgramDGP <: Rewardable end
+abstract type AbstractState <: Rewardable end
+abstract type AbstractProgramState <: Rewardable end
 
 abstract type AbstractStudySampleDistribution end
 abstract type AbstractSampleDistribution end
 abstract type AbstractEvalObservation end
 abstract type AbstractProgramEvalObservation end
-
-abstract type AbstractRewardModel end
 
 abstract type AbstractFundingAction end
 abstract type AbstractActionSet end
