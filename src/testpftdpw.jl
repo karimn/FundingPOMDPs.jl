@@ -48,6 +48,7 @@ end
     import MCTS
     import Base: rand, show
     import Turing
+    import ProgressMeter
 end
 
 const RNG = Random.MersenneTwister()
@@ -106,6 +107,8 @@ bayes_updater = FullBayesianUpdater(RNG, bayes_model)
 planned_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
+pm = ProgressMeter.Progress(NUM_SIM, desc = "Preparing sims...")
+
 @threads for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
@@ -158,11 +161,14 @@ greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
     end
 
     greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, initialbelief(greedy_pomdp), init_s, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
+
+    ProgressMeter.next!(pm)
 end
 
 @everywhere function get_sim_data(sim::POMDPTools.Sim, hist::POMDPTools.SimHistory)
     actions = collect(POMDPSimulators.action_hist(hist)) 
     beliefs = collect(POMDPSimulators.belief_hist(hist))
+    trees = [ s_ainfo !== nothing && haskey(s_ainfo, :tree) ? s_ainfo[:tree] : missing for s_ainfo in POMDPSimulators.ainfo_hist(hist) ]
 
     return (
         action = actions, 
@@ -170,6 +176,7 @@ end
         belief = beliefs,
         expected_reward = [expectedutility(rewardmodel(sim.pomdp), b, a) for (b, a) in zip(beliefs, actions)],
         state = collect(POMDPSimulators.state_hist(hist)),
+        tree = trees,
 
         total_undiscounted_actual_reward = POMDPSimulators.undiscounted_reward(hist)
     )
