@@ -6,21 +6,23 @@ Usage:
 
 Options:
     --append, -a                               Append data
-    --numprograms=<nprograms>, -p <nprograms>  Number of programs [default: 10]
+    --numprograms=<nprograms>, -p <nprograms>  Number of programs [default: 5]
     --numsim=<numsim>, -s <numsim>             Number of simulations [default: 10]
-    --numsteps=<numsteps>, -t <numsteps>       Number of steps [default: 10]
+    --numsteps=<numsteps>, -t <numsteps>       Number of steps [default: 20]
     --numprocs=<nprocs>                        Number of parallel processes [default: 5]
     --depth=<depth>, -d <depth>                Planning depth [default: 10]
-    --alpha=<alpha>                            Exponential utility function alpha parameter [default: 1]
+    --alpha=<alpha>                            Exponential utility function alpha parameter [default: 0.25]
     --risk-neutral                             Risk neutral utility
     --plan-algo=<algo>                         Planning algorithm (pftdpw, random) [default: pftdpw]
+    --pftdpw-iter=<iter>                       Number of DPW solver iterations [default: 50]
+    --save-pftdpw-tree                         Save MCTS tree in action info
 """
 
 import DocOpt
 
 args = DocOpt.docopt(
     doc, 
-    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 2 -t 3 --numprocs=1" : ARGS, 
+    isinteractive() ? "greedy_sim_test.jls pftdpw_sim_test.jls -p 5 -s 2 -t 3 --numprocs=1 --plan-algo=random" : ARGS, 
     version = v"1"
 )
 
@@ -84,13 +86,14 @@ greedy_solver = BayesianGreedySolver()
 pftdpw_solver = MCTS.DPWSolver(
     depth = parse(Int, args["--depth"]),
     exploration_constant = 25.0,
-    n_iterations = 20, #100,
+    n_iterations = parse(Int, args["--pftdpw-iter"]), #20,  #100,
     enable_action_pw = false,  
     k_state = 4.5,
     alpha_state = 1/10.0,
     check_repeat_state = false,
     estimate_value = MCTS.RolloutEstimator(random_solver),
-    keep_tree = true,
+    keep_tree = false, # true, 
+    tree_in_info = args["--save-pftdpw-tree"],
     rng = RNG 
 )
 
