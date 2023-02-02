@@ -25,3 +25,5 @@ sim_model
 
 sim_model.rds
 src/*.jls
+
+temp-data/
