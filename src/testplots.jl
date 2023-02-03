@@ -2,6 +2,7 @@ begin
     include("FundingPOMDPs.jl")
 
     using .FundingPOMDPs
+    using MCTS, POMDPs, D3Trees
     using DataFrames, DataFramesMeta
     using StatsBase, Gadfly, Pipe, Serialization
     using ParticleFilters
@@ -13,13 +14,18 @@ end
 
 Gadfly.set_default_plot_size(50cm, 40cm)
 
-file_suffix = "_0.25_2"
+file_suffix = ""
 
 util_model = ExponentialUtilityModel(0.25)
 #util_model = RiskNeutralUtilityModel()
 
-greedy_sim_data = deserialize("src/greedy_sim$(file_suffix).jls")
-pftdpw_sim_data = deserialize("src/pftdpw_sim$(file_suffix).jls")
+greedy_sim_data = deserialize("temp-data/greedy_sim$(file_suffix).jls")
+pftdpw_sim_data = deserialize("temp-data/pftdpw_sim$(file_suffix).jls")
+random_sim_data = deserialize("temp-data/random_sim$(file_suffix).jls")
+
+for d in (greedy_sim_data, pftdpw_sim_data, random_sim_data)
+    dropmissing!(d)
+end
 
 function calculate_util_diff(planned_reward, baseline_reward; accum = false)  
     if accum
@@ -43,10 +49,13 @@ do_nothing_reward = begin
     [expectedutility.(Ref(util_model), states[Not(end)], Ref(do_nothing)) for states in greedy_sim_data.state]
 end
 
-pvg_util_diff_summ = (calculate_util_diff_summ ∘ calculate_util_diff)(pftdpw_sim_data.actual_reward, greedy_sim_data.actual_reward; accum = true) 
-util_diff_summ = @pipe [greedy_sim_data.actual_reward, pftdpw_sim_data.actual_reward] |> 
+vg_util_diff_summ = @pipe [pftdpw_sim_data.actual_reward, random_sim_data.actual_reward] |> 
+    (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(greedy_sim_data.actual_reward); accum = true) |> 
+    vcat(_...; source = :algo => ["planned", "random"])
+
+util_diff_summ = @pipe [greedy_sim_data.actual_reward, pftdpw_sim_data.actual_reward, random_sim_data.actual_reward] |> 
     (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(do_nothing_reward); accum = true) |>
-    vcat(_...; source = :algo => ["greedy", "planned"])
+    vcat(_...; source = :algo => ["greedy", "planned", "random"])
 
 vstack(
     plot(
@@ -56,8 +65,9 @@ vstack(
         layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
         Scale.x_discrete, Guide.yticks(ticks = -0.1:0.1:3) 
     ),
+
     plot(
-        pvg_util_diff_summ, x = :step, 
+        vg_util_diff_summ, x = :step, color = :algo, 
         layer(y = :mean, linestyle = [:dash], Geom.point, Geom.line),
         layer(y = :med, ymin = :lb, ymax = :ub, alpha = [0.75], Geom.line, Geom.ribbon),
         layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
@@ -65,30 +75,13 @@ vstack(
     )
 )
 
-#=
-@pipe map(["_0.25", "_0.75"]) do suffix
-    [deserialize("src/pftdpw_sim$(suffix).jls").actual_reward, deserialize("src/greedy_sim$(suffix).jls").actual_reward]
-end |>
-    invert(_) |>
-    (calculate_util_diff_summ ∘ calculate_util_diff).(_...) |> 
-    vcat(_...; source = :alpha => ["0.25", "0.75"]) |> 
-    plot(
-        _, x = :step, 
-        layer(y = :mean, color = :alpha, linestyle = [:dash], Geom.point, Geom.line),
-        layer(y = :med, ymin = :lb, ymax = :ub,  color = :alpha, alpha = [0.75], Geom.line, Geom.ribbon),
-        #layer(_, x = :step, y = :diff, group = :sim, alpha = [0.25], Geom.line),
-        layer(yintercept = [0.0], Geom.hline(style = :dot, color = "grey")),
-        Scale.x_discrete, Guide.yticks(ticks = -1:0.1:1) 
-    )
-=#
-
-obs_reward = @pipe pairs((greedy = greedy_sim_data.actual_reward, planned = pftdpw_sim_data.actual_reward)) |>
+obs_reward = @pipe pairs((greedy = greedy_sim_data.actual_reward, planned = pftdpw_sim_data.actual_reward, random = random_sim_data.actual_reward)) |>
     DataFrame(_) |>
     insertcols!(_, :sim => 1:nrow(_)) |>
-    DataFrames.flatten(_, [:greedy, :planned]) |>
+    DataFrames.flatten(_, [:greedy, :planned, :random]) |>
     groupby(_, :sim) |>
     transform!(_, eachindex => :step) |>
-    stack(_, [:greedy, :planned], value_name = :reward) |>
+    stack(_, [:greedy, :planned, :random], value_name = :reward) |>
     groupby(_, Cols(:sim, :variable)) |>
     @transform!(_, :cumul_reward = cumsum(:reward))
 
@@ -102,10 +95,16 @@ nprograms = maximum(b_data_greedy.programid)
 b_data_planned = @pipe get_beliefs_data.(pftdpw_sim_data.belief) |> 
     vcat(_..., source = :sim)
 
+b_data_random = @pipe get_beliefs_data.(random_sim_data.belief) |> 
+    vcat(_..., source = :sim)
+
 last_b_data_greedy = @pipe get_beliefs_data.(greedy_sim_data.belief; forecast = false) |> 
     vcat(_..., source = :sim)
 
 last_b_data_planned = @pipe get_beliefs_data.(pftdpw_sim_data.belief; forecast = false) |> 
+    vcat(_..., source = :sim)
+
+last_b_data_random = @pipe get_beliefs_data.(random_sim_data.belief; forecast = false) |> 
     vcat(_..., source = :sim)
 
 summarize_b_data(b_data, probs = [0.1, 0.5, 0.9]) = @pipe b_data |>
@@ -118,13 +117,15 @@ summarize_b_data(b_data, probs = [0.1, 0.5, 0.9]) = @pipe b_data |>
 
 b_data_greedy_summ = summarize_b_data(b_data_greedy) 
 b_data_planned_summ = summarize_b_data(b_data_planned) 
+b_data_random_summ = summarize_b_data(b_data_random) 
 last_b_data_greedy_summ = summarize_b_data(last_b_data_greedy) 
 last_b_data_planned_summ = summarize_b_data(last_b_data_planned)  
+last_b_data_random_summ = summarize_b_data(last_b_data_random)  
 
 s_data = @pipe get_states_data.(greedy_sim_data.state) |>
     vcat(_..., source = :sim)
 
-actlist = @pipe SelectProgramSubsetActionSetFactory(nprograms, 1) |> actions(_).actions
+actlist = @pipe SelectProgramSubsetActionSetFactory(nprograms, 1) |> FundingPOMDPs.actions(_).actions
 
 all_rewards = @pipe get_rewards_data.(greedy_sim_data.state, Ref(actlist), Ref(util_model)) |>
     [@transform!(rd[2], :sim = rd[1]) for rd in enumerate(_)] |>
@@ -141,19 +142,8 @@ all_expected_rewards = @pipe get_rewards_data.(pftdpw_sim_data.belief, Ref(actli
     vcat(_...) |>
     insertcols!(_, :reward_type => "expected planned")
 
-#obs_act = @pipe pairs((:planned => pftdpw_sim_data.action, :greedy => greedy_sim_data.action)) |>
-obs_act = @pipe pftdpw_sim_data.action |>
-    DataFrame.(_) |>
-    [@transform!(rd[2], :sim = rd[1]) for rd in enumerate(_)] |>
-    vcat(_...) |>
-    @rtransform(
-        _, 
-        :implement_programs = isempty(:implement_programs) ? 0 : first(:implement_programs),
-        :eval_programs = isempty(:eval_programs) ? 0 : first(:eval_programs)
-    ) |>
-    groupby(_, :sim) |>
-    transform!(_, eachindex => :step) |>
-    stack(_, [:implement_programs, :eval_programs], variable_name = :action_type, value_name = :pid)
+planned_obs_act = get_actions_data(pftdpw_sim_data.action)
+random_obs_act = get_actions_data(random_sim_data.action)
 
 pdgps_data = @pipe pftdpw_sim_data.state |>
     get_dgp_data.(_[1]) |>
@@ -161,7 +151,7 @@ pdgps_data = @pipe pftdpw_sim_data.state |>
     vcat(_...)
 
 begin
-    sim = 1 
+    sim = 30 
     
     obs_reward_plot = @pipe obs_reward |>
         @rsubset(_, :sim in sim) |>
@@ -190,15 +180,25 @@ begin
                 Guide.title("Cumulative Reward")
             )
 
-    act_plot = @pipe obs_act |>
+    planned_act_plot = @pipe planned_obs_act |>
         @rsubset(_, :sim in sim) |>
         @rtransform!(_, :pid = :action_type == "implement_programs" ? :pid - 0.02 : :pid + 0.02) |>
         plot(
             _, x = :step, y = :pid, color = :action_type, 
-            Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms)
+            Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms),
+            Guide.title("Planned Actions")
         )
 
-    belief_plot_data = @pipe obs_act |>
+    random_act_plot = @pipe random_obs_act |>
+        @rsubset(_, :sim in sim) |>
+        @rtransform!(_, :pid = :action_type == "implement_programs" ? :pid - 0.02 : :pid + 0.02) |>
+        plot(
+            _, x = :step, y = :pid, color = :action_type, 
+            Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms),
+            Guide.title("Random Actions")
+        )
+
+    belief_plot_data = @pipe planned_obs_act |>
         @subset(_, :sim .== sim, :action_type .== "eval_programs") |>
         @transform!(_, :step = :step .+ 1) |>
         vcat(
@@ -227,7 +227,7 @@ begin
             Guide.title("Predicted States")
         )
 
-    last_belief_plot_data = @pipe obs_act |>
+    last_belief_plot_data = @pipe planned_obs_act |>
         @subset(_, :sim .== sim, :action_type .== "eval_programs") |>
         @transform!(_, :step = :step .+ 1) |>
         vcat(
@@ -281,7 +281,7 @@ begin
 
     title(gridstack([obs_reward_plot     obs_cumul_reward_plot; 
                      reward_plot         cumul_reward_plot; 
-                     act_plot            plot();
+                     planned_act_plot    random_act_plot;
                      μ_belief_plot       τ_belief_plot; 
                      μ_last_belief_plot  τ_last_belief_plot]), "Simulation $sim")
 end
@@ -295,6 +295,11 @@ end
 end |>
     vcat(_...) |>
     plot(_, x = :x , y = :u, color = :α, Geom.line, Coord.cartesian(fixed = true))
+
+
+@pipe DataFrame(x = 0:20) |> 
+    @rtransform!(_, :y = 10 * (:x^(1/10))) |> 
+    plot(_, x = :x, y = :y, Geom.line, Geom.point, Guide.yticks(ticks = 0.0:0.5:6))
 
 pb2 = programbeliefs(pftdpw_sim_data.belief[4][12])[2]
 expectedutility(util_model, pb2, false)
@@ -310,7 +315,22 @@ pb2d_data = @pipe pb2 |>
     groupby(_, :implemented) |> 
     @combine(_, :lvl_std = std(:meanlevel), :eu_std = std(:meanutil))
 
-
 plot(pb2d_data, x = :meanlevel, y = :meanutil, color = :implemented, Geom.density2d)
 plot(pb2d_data, x = :meanutil, color = :implemented, Geom.density)
 plot(pb2d_data, x = :meanlevel, color = :implemented, Geom.density)
+
+function MCTS.node_tag(b::CausalStateParticleBelief) 
+    "[Belief]"
+end
+
+function MCTS.node_tag(a::SeparateImplementEvalAction) 
+    eval_text = string([p for p in a.eval_programs])
+    implement_text = isempty(a.implement_programs) ? "[]" : string([p for p in a.implement_programs]) 
+
+    return "{i=$implement_text, e=$eval_text}"
+end
+
+inchrome(D3Tree(pftdpw_sim_data.tree[1][1], init_expand = 1))
+inchrome(D3Tree(pftdpw_sim_data.tree[1][2], init_expand = 1))
+inchrome(D3Tree(pftdpw_sim_data.tree[1][3], init_expand = 1))
+
