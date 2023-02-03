@@ -33,3 +33,18 @@ function get_beliefs_data(bv::Vector{B}; forecast = true) where B <: AbstractBel
 end
 
 get_dgp_data(s::CausalState) = DataFrame(dgp(s).programdgps)
+
+function get_actions_data(avv::Vector{Vector{SeparateImplementEvalAction}}) 
+    @pipe avv |>
+        DataFrame.(_) |>
+        [@transform!(rd[2], :sim = rd[1]) for rd in enumerate(_)] |>
+        vcat(_...) |>
+        @rtransform(
+            _, 
+            :implement_programs = isempty(:implement_programs) ? 0 : first(:implement_programs),
+            :eval_programs = isempty(:eval_programs) ? 0 : first(:eval_programs)
+        ) |>
+        groupby(_, :sim) |>
+        transform!(_, eachindex => :step) |>
+        DataFrames.stack(_, [:implement_programs, :eval_programs], variable_name = :action_type, value_name = :pid)
+end

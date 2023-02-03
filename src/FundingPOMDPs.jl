@@ -54,7 +54,7 @@ export utility_particles, programid, state_samples, last_state_samples, programb
 export BayesianGreedySolver, BayesianGreedyPlanner
 export MultiBootstrapFilter, CausalStateParticleBelief
 export TuringModel
-export get_rewards_data, get_beliefs_data, get_dgp_data, get_states_data
+export get_rewards_data, get_beliefs_data, get_dgp_data, get_states_data, get_actions_data
 
 
 end # module

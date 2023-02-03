@@ -141,19 +141,8 @@ all_expected_rewards = @pipe get_rewards_data.(pftdpw_sim_data.belief, Ref(actli
     vcat(_...) |>
     insertcols!(_, :reward_type => "expected planned")
 
-#obs_act = @pipe pairs((:planned => pftdpw_sim_data.action, :greedy => greedy_sim_data.action)) |>
-obs_act = @pipe pftdpw_sim_data.action |>
-    DataFrame.(_) |>
-    [@transform!(rd[2], :sim = rd[1]) for rd in enumerate(_)] |>
-    vcat(_...) |>
-    @rtransform(
-        _, 
-        :implement_programs = isempty(:implement_programs) ? 0 : first(:implement_programs),
-        :eval_programs = isempty(:eval_programs) ? 0 : first(:eval_programs)
-    ) |>
-    groupby(_, :sim) |>
-    transform!(_, eachindex => :step) |>
-    stack(_, [:implement_programs, :eval_programs], variable_name = :action_type, value_name = :pid)
+planned_obs_act = get_actions_data(pftdpw_sim_data.action)
+random_obs_act = get_actions_data(random_sim_data.action)
 
 pdgps_data = @pipe pftdpw_sim_data.state |>
     get_dgp_data.(_[1]) |>
@@ -190,15 +179,25 @@ begin
                 Guide.title("Cumulative Reward")
             )
 
-    act_plot = @pipe obs_act |>
+    planned_act_plot = @pipe planned_obs_act |>
         @rsubset(_, :sim in sim) |>
         @rtransform!(_, :pid = :action_type == "implement_programs" ? :pid - 0.02 : :pid + 0.02) |>
         plot(
             _, x = :step, y = :pid, color = :action_type, 
-            Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms)
+            Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms),
+            Guide.title("Planned Actions")
         )
 
-    belief_plot_data = @pipe obs_act |>
+    random_act_plot = @pipe random_obs_act |>
+        @rsubset(_, :sim in sim) |>
+        @rtransform!(_, :pid = :action_type == "implement_programs" ? :pid - 0.02 : :pid + 0.02) |>
+        plot(
+            _, x = :step, y = :pid, color = :action_type, 
+            Geom.step, style(line_width = 1mm), Scale.x_discrete, Coord.cartesian(ymin = 0, ymax = nprograms),
+            Guide.title("Random Actions")
+        )
+
+    belief_plot_data = @pipe planned_obs_act |>
         @subset(_, :sim .== sim, :action_type .== "eval_programs") |>
         @transform!(_, :step = :step .+ 1) |>
         vcat(
@@ -227,7 +226,7 @@ begin
             Guide.title("Predicted States")
         )
 
-    last_belief_plot_data = @pipe obs_act |>
+    last_belief_plot_data = @pipe planned_obs_act |>
         @subset(_, :sim .== sim, :action_type .== "eval_programs") |>
         @transform!(_, :step = :step .+ 1) |>
         vcat(
@@ -281,7 +280,7 @@ begin
 
     title(gridstack([obs_reward_plot     obs_cumul_reward_plot; 
                      reward_plot         cumul_reward_plot; 
-                     act_plot            plot();
+                     planned_act_plot    random_act_plot;
                      μ_belief_plot       τ_belief_plot; 
                      μ_last_belief_plot  τ_last_belief_plot]), "Simulation $sim")
 end
