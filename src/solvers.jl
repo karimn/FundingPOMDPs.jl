@@ -23,7 +23,7 @@ end
 
 POMDPs.value(p::BayesianGreedyPlanner, b) = POMDPs.value(p, b, POMDPs.action(p, b))
 
-POMDPs.updater(p::BayesianGreedyPlanner) = FullBayesianUpdater(hyperparam(p.pomdp))
+#POMDPs.updater(p::BayesianGreedyPlanner) = FullBayesianUpdater(hyperparam(p.pomdp))
 
 struct BayesianGreedySolver <: POMDPs.Solver
 end

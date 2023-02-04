@@ -8,6 +8,9 @@ struct ProgramDGP <: AbstractProgramDGP
     programid::Int64
 end
 
+
+ProgramDGP(μ::Float64, τ::Float64, σ::Float64, pid::Int64) = ProgramDGP(μ, τ, σ, 0.0, 0.0, pid)
+
 function ProgramDGP(priors::Priors, rng::Random.AbstractRNG, programid::Int64) 
     μ, τ, σ, η_μ, η_τ = Base.rand(rng, priors)
 

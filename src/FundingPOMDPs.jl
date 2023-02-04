@@ -15,7 +15,7 @@ using POMDPs
 using POMDPLinter
 using Distributions
 using Parameters
-using Turing
+using Turing, GLM
 using DataFrames, DataFramesMeta
 using Pipe
 
@@ -48,13 +48,12 @@ export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
 export actions
 export KBanditFundingMDP, KBanditFundingPOMDP
 export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
-export numprograms, initialbelief, rewardmodel, initialstate
-export FullBayesianBelief, FullBayesianUpdater, ProgramBelief
+export initialbelief, rewardmodel, initialstate
+export Belief, ProgramBelief, FundingUpdater
 export utility_particles, programid, state_samples, last_state_samples, programbeliefs
-export BayesianGreedySolver, BayesianGreedyPlanner
+export BayesianGreedySolver
 export MultiBootstrapFilter, CausalStateParticleBelief
-export TuringModel
+export TuringModel, OlsModel
 export get_rewards_data, get_beliefs_data, get_dgp_data, get_states_data, get_actions_data
-
 
 end # module

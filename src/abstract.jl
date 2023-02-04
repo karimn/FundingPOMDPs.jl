@@ -2,7 +2,9 @@ abstract type AbstractRewardModel end
 abstract type Rewardable end
 
 abstract type AbstractBelief <: Rewardable end
-abstract type AbstractBayesianModel end
+abstract type AbstractLearningModel end
+abstract type AbstractBayesianModel <: AbstractLearningModel end
+abstract type AbstractFrequentistModel <: AbstractLearningModel end
 
 abstract type AbstractDGP <: Rewardable end
 abstract type AbstractProgramDGP <: Rewardable end
