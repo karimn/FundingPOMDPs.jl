@@ -8,8 +8,6 @@ struct ProgramCausalState <: AbstractProgramState
     programid::Int64
 end
 
-#ProgramCausalState(μ::Float64, τ::Float64, σ::Float64, id::Int64) = ProgramCausalState(μ, τ, σ, id, nothing) 
-
 function Base.rand(rng::Random.AbstractRNG, pd::ProgramDGP)
     μ_study = pd.μ + Base.rand(rng, Distributions.Normal(0, pd.η_μ))
     τ_study = pd.τ + Base.rand(rng, Distributions.Normal(0, pd.η_τ))
@@ -65,25 +63,30 @@ transition(pcs::ProgramCausalState, a::AbstractFundingAction) = ProgramCausalSta
 
 Base.rand(rng::Random.AbstractRNG, pcsd::ProgramCausalStateDistribution) = Base.rand(rng, pcsd.pdgp) #, pcsd.prev)
 
-struct CausalState <: AbstractState 
+mutable struct CausalState <: AbstractState 
     dgp::DGP
     programstates::Vector{ProgramCausalState}
     next::Union{CausalState, Nothing}
+    prev::Union{CausalState, Nothing}
 end
 
-CausalState(progstates::Vector{ProgramCausalState}) = CausalState(DGP([dgp(ps) for ps in progstates]), progstates, nothing)
+CausalState(progstates::Vector{ProgramCausalState}) = CausalState(DGP([dgp(ps) for ps in progstates]), progstates, nothing, nothing)
 
 dgp(s::CausalState) = s.dgp
+
+next_state(s::CausalState) = s.next
+prev_state(s::CausalState) = s.prev
+prev_state!(s::CausalState, p::CausalState) = s.prev = p
 
 function Base.rand(rng::Random.AbstractRNG, dgp::DGP; state_chain_length::Int = 1)
     (state_chain_length >= 1) || throw(ArgumentError("state_chain_length must be equal or greater than zero"))
 
-    second_state = nothing
     local first_state = nothing
 
     for _ in 1:state_chain_length
-        first_state = CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps], second_state)
-        second_state = first_state
+        next_state = first_state
+        first_state = CausalState(dgp, [Base.rand(rng, pdgp) for pdgp in dgp.programdgps], next_state, nothing)
+        next_state ≢ nothing && prev_state!(next_state, first_state)
     end
 
     return first_state
@@ -109,4 +112,4 @@ end
 
 Base.rand(rng::Random.AbstractRNG, sd::CausalStateDistribution) = Base.rand(rng, sd.dgp) 
 
-transition(s::CausalState, ::AbstractFundingAction) = s.next ≡ nothing ? CausalStateDistribution(s.dgp) : Deterministic(s.next) 
+transition(s::CausalState, ::AbstractFundingAction) = next_state(s) ≡ nothing ? CausalStateDistribution(s.dgp) : Deterministic(next_state(s)) 
