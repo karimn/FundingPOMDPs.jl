@@ -50,10 +50,10 @@ export KBanditFundingMDP, KBanditFundingPOMDP
 export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
 export initialbelief, rewardmodel, initialstate
 export Belief, ProgramBelief, FundingUpdater
-export utility_particles, programid, state_samples, last_state_samples, programbeliefs
+export utility_particles, programid, state_samples, last_state_samples, programbeliefs, data
 export BayesianGreedySolver
 export MultiBootstrapFilter, CausalStateParticleBelief
-export TuringModel, OlsModel
+export TuringModel, OlsModel, sample
 export get_rewards_data, get_beliefs_data, get_dgp_data, get_states_data, get_actions_data
 
 end # module
