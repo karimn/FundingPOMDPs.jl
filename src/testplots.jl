@@ -14,17 +14,20 @@ end
 
 Gadfly.set_default_plot_size(50cm, 40cm)
 
-file_suffix = ""
+file_suffix = "_test"
 
 util_model = ExponentialUtilityModel(0.25)
 #util_model = RiskNeutralUtilityModel()
 
+all_sim_data = deserialize("temp-data/sim$(file_suffix).jls")
 greedy_sim_data = deserialize("temp-data/greedy_sim$(file_suffix).jls")
 pftdpw_sim_data = deserialize("temp-data/pftdpw_sim$(file_suffix).jls")
 random_sim_data = deserialize("temp-data/random_sim$(file_suffix).jls")
+freq_sim_data = deserialize("temp-data/freq_sim$(file_suffix).jls")
 
-for d in (greedy_sim_data, pftdpw_sim_data, random_sim_data)
-    dropmissing!(d)
+for d in (greedy_sim_data, pftdpw_sim_data, random_sim_data, freq_sim_data)
+#    dropmissing!(d)
+    @transform!(d, :sim_id = 1:nrow(d))
 end
 
 function calculate_util_diff(planned_reward, baseline_reward; accum = false)  
@@ -46,16 +49,20 @@ end
 
 do_nothing_reward = begin 
     do_nothing = ImplementEvalAction()
-    [expectedutility.(Ref(util_model), states[Not(end)], Ref(do_nothing)) for states in greedy_sim_data.state]
+
+    @pipe greedy_sim_data |> 
+        dropmissing(_, :state) |> 
+        [expectedutility.(Ref(util_model), states[Not(end)], Ref(do_nothing)) for states in _.state]
 end
 
-vg_util_diff_summ = @pipe [pftdpw_sim_data.actual_reward, random_sim_data.actual_reward] |> 
+vg_util_diff_summ = @pipe [pftdpw_sim_data.actual_reward, random_sim_data.actual_reward, freq_sim_data.actual_reward] |> 
     (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(greedy_sim_data.actual_reward); accum = true) |> 
-    vcat(_...; source = :algo => ["planned", "random"])
+    vcat(_...; source = :algo => ["planned", "random", "freq"])
 
-util_diff_summ = @pipe [greedy_sim_data.actual_reward, pftdpw_sim_data.actual_reward, random_sim_data.actual_reward] |> 
+util_diff_summ = @pipe [greedy_sim_data, pftdpw_sim_data, random_sim_data, freq_sim_data] |>
+    [dropmissing(sim_data, :state).actual_reward for sim_data in _] |> 
     (calculate_util_diff_summ ∘ calculate_util_diff).(_, Ref(do_nothing_reward); accum = true) |>
-    vcat(_...; source = :algo => ["greedy", "planned", "random"])
+    vcat(_...; source = :algo => ["greedy", "planned", "random", "freq"])
 
 vstack(
     plot(
@@ -75,13 +82,13 @@ vstack(
     )
 )
 
-obs_reward = @pipe pairs((greedy = greedy_sim_data.actual_reward, planned = pftdpw_sim_data.actual_reward, random = random_sim_data.actual_reward)) |>
+obs_reward = @pipe pairs((greedy = greedy_sim_data.actual_reward, planned = pftdpw_sim_data.actual_reward, random = random_sim_data.actual_reward, freq = freq_sim_data.actual_reward)) |>
     DataFrame(_) |>
     insertcols!(_, :sim => 1:nrow(_)) |>
-    DataFrames.flatten(_, [:greedy, :planned, :random]) |>
+    DataFrames.flatten(_, [:greedy, :planned, :random, :freq]) |>
     groupby(_, :sim) |>
     transform!(_, eachindex => :step) |>
-    stack(_, [:greedy, :planned, :random], value_name = :reward) |>
+    stack(_, [:greedy, :planned, :random, :freq], value_name = :reward) |>
     groupby(_, Cols(:sim, :variable)) |>
     @transform!(_, :cumul_reward = cumsum(:reward))
 
@@ -151,7 +158,7 @@ pdgps_data = @pipe pftdpw_sim_data.state |>
     vcat(_...)
 
 begin
-    sim = 30 
+    sim = 3 
     
     obs_reward_plot = @pipe obs_reward |>
         @rsubset(_, :sim in sim) |>
@@ -334,3 +341,20 @@ inchrome(D3Tree(pftdpw_sim_data.tree[1][1], init_expand = 1))
 inchrome(D3Tree(pftdpw_sim_data.tree[1][2], init_expand = 1))
 inchrome(D3Tree(pftdpw_sim_data.tree[1][3], init_expand = 1))
 
+@pipe obs_reward |>
+        @rsubset(_, :sim in 3) |>
+        #plot(_, x = :step, y = :value, color = :variable, Geom.point, Geom.line, Scale.x_discrete)
+        plot(_, x = :step, y = :cumul_reward, xgroup = :sim, color = :variable, Geom.subplot_grid(Geom.point, Geom.line), Scale.x_discrete)
+
+greedy_sim_data.action[3]
+freq_sim_data.action[3]
+greedy_sim_data.belief[3][1].progbeliefs
+freq_sim_data.belief[3][1].progbeliefs
+data(greedy_sim_data.belief[3][1].progbeliefs[1])
+data(freq_sim_data.belief[3][1].progbeliefs[1])
+last_state_samples(greedy_sim_data.belief[3][1].progbeliefs[1])
+last_state_samples(freq_sim_data.belief[3][1].progbeliefs[1])
+greedy_sim_data.state[3][2].programstates
+expectedutility(util_model, greedy_sim_data.belief[3][1].progbeliefs[1], false)
+expectedutility(util_model, freq_sim_data.belief[3][1].progbeliefs[1], true)
+dgp(greedy_sim_data.state[3][2].programstates[1])
