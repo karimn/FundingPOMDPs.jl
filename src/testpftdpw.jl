@@ -133,7 +133,7 @@ pm = ProgressMeter.Progress(NUM_SIM, desc = "Preparing sims...")
     random_dgp = deepcopy(planned_dgp)
     freq_dgp = deepcopy(planned_dgp)
 
-    init_s = freq_catch_up ? prior_greedy_sim_data.state[sim_index][1] : Base.rand(RNG, planned_dgp; state_chain_length = NUM_SIM_STEPS)
+    init_s = freq_catch_up ? prior_greedy_sim_data.state[sim_index][1] : Base.rand(RNG, planned_dgp; state_chain_length = NUM_SIM_STEPS + 1) # One more for the pre-state
 
     planned_mdp = KBanditFundingMDP{SeparateImplementEvalAction}(
         util_model,
