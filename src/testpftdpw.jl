@@ -142,7 +142,9 @@ pm = ProgressMeter.Progress(NUM_SIM, desc = "Preparing sims...")
         explore_only_actionset_factory,
         RNG,
         init_s
-    ) 
+    )
+    
+    bayes_b = nothing
 
     if !freq_catch_up
         planned_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction}(planned_mdp, bayes_model)
@@ -173,7 +175,7 @@ pm = ProgressMeter.Progress(NUM_SIM, desc = "Preparing sims...")
     end
 
     if freq_file !== nothing
-        freq_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction}(planned_mdp, ols_model)
+        freq_pomdp = bayes_b !== nothing ? KBanditFundingPOMDP{SeparateImplementEvalAction}(planned_mdp, data(bayes_b), ols_model) : KBanditFundingPOMDP{SeparateImplementEvalAction}(planned_mdp, ols_model)
         curr_num_sim_steps = freq_catch_up ? length(prior_greedy_sim_data.action[sim_index]) : NUM_SIM_STEPS
         freq_random_planner = POMDPs.solve(random_solver, freq_pomdp)
 
