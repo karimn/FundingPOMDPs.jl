@@ -3,20 +3,19 @@ struct KBanditFundingMDP{A <: AbstractFundingAction} <: MDP{CausalState, A}
     rewardmodel::AbstractRewardModel
     discount::Float64
     studysamplesize::Int64
-    #dgp::AbstractDGP
     actionset_factory::AbstractActionSetFactory{A}
     rng::Random.AbstractRNG
 
-    curr_state::CausalState
+    pre_state::CausalState
 end
 
-#function KBanditFundingMDP{A}(r::AbstractRewardModel, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}; rng::Random.AbstractRNG = Random.GLOBAL_RNG, curr_state::CausalState = Base.rand(rng, dgp)) where {A}
+#=
 function KBanditFundingMDP{A}(r::AbstractRewardModel, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}; rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A}
     curr_state = Base.rand(rng, dgp)
 
-    #return new{A}(r, d, ss, dgp, asf, rng, curr_state)
     return KBanditFundingMDP{A}(r, d, ss, asf, rng, curr_state)
 end 
+=#
 
 mdp(m::KBanditFundingMDP) = m 
 
@@ -36,7 +35,7 @@ end
 function KBanditFundingPOMDP{A}(mdp::KBanditFundingMDP{A}, m::AbstractLearningModel) where {A <: AbstractFundingAction}
     initdatasets = Vector{Vector{StudyDataset}}(undef, numprograms(mdp))
 
-    for (pid, ds) in getdatasets(Base.rand(mdp.rng, mdp.curr_state, mdp.studysamplesize))
+    for (pid, ds) in getdatasets(Base.rand(mdp.rng, mdp.pre_state, mdp.studysamplesize))
         initdatasets[pid] = [ds] 
     end
     
@@ -60,7 +59,7 @@ programbandits(m::KBanditFundingPOMDP) = [ProgramBanditWrapper(m, i) for i in 1:
 
 mdp(m::KBanditFundingPOMDP) = m.mdp
 
-numprograms(m::KBanditFundingProblem) = numprograms(mdp(m).curr_state)
+numprograms(m::KBanditFundingProblem) = numprograms(mdp(m).pre_state)
 
 rewardmodel(m::KBanditFundingProblem) = mdp(m).rewardmodel
 
@@ -80,7 +79,7 @@ POMDPs.actions(m::KBanditFundingPOMDP{A}, b::AbstractBelief) where {A <: Abstrac
 
 POMDPs.reward(m::KBanditFundingProblem{A}, s::CausalState, a::A) where {A} = expectedutility(rewardmodel(m), s, a)
 
-POMDPs.initialstate(m::KBanditFundingMDP) = POMDPTools.Deterministic(mdp(m).curr_state) 
+POMDPs.initialstate(m::KBanditFundingMDP) = POMDPTools.Deterministic(next_state(mdp(m).pre_state))
 
 # GenerativeBeliefMDP uses this method to figure out the belief type of the POMDP so I can't just return the causal state.
 POMDPs.initialstate(m::KBanditFundingPOMDP) = initialbelief(m)
