@@ -187,22 +187,24 @@ end
 
 function create_sim_data_getter(actual_reward_only = false)
     function inner_get_sim_data(sim::POMDPTools.Sim, hist::POMDPTools.SimHistory)
-        sim_data = (actual_reward = collect(POMDPSimulators.reward_hist(hist)),)
+        actions = collect(POMDPSimulators.action_hist(hist)) 
+        beliefs = collect(POMDPSimulators.belief_hist(hist))
+
+        sim_data = (
+            state = collect(POMDPSimulators.state_hist(hist)),
+            action = actions, 
+            actual_reward = collect(POMDPSimulators.reward_hist(hist)),
+            expected_reward = [expectedutility(rewardmodel(sim.pomdp), b, a) for (b, a) in zip(beliefs, actions)],
+            total_undiscounted_actual_reward = POMDPSimulators.undiscounted_reward(hist)
+        )
 
         if !actual_reward_only
-            actions = collect(POMDPSimulators.action_hist(hist)) 
-            beliefs = collect(POMDPSimulators.belief_hist(hist))
             trees = [ s_ainfo !== nothing && haskey(s_ainfo, :tree) ? s_ainfo[:tree] : missing for s_ainfo in POMDPSimulators.ainfo_hist(hist) ]
 
             sim_data = (
-                action = actions, 
                 sim_data...,
                 belief = beliefs,
-                expected_reward = [expectedutility(rewardmodel(sim.pomdp), b, a) for (b, a) in zip(beliefs, actions)],
-                state = collect(POMDPSimulators.state_hist(hist)),
-                tree = trees,
-
-                total_undiscounted_actual_reward = POMDPSimulators.undiscounted_reward(hist)
+                tree = trees
             )
         end
 
