@@ -13,7 +13,7 @@ end
 
 ProgramBelief(state_samples::ParticleFilters.AbstractParticleBelief, pid::Int64) = ProgramBelief(state_samples, nothing, pid, StudyDataset[], nothing)
 
-function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64, rng::Random.AbstractRNG)
+function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64)
     ndatasets = length(data) 
 
     logger = Logging.SimpleLogger(Logging.Error)
@@ -26,7 +26,7 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     η = "η_toplevel[1]" in sample_cols && "η_toplevel[1]" in sample_cols ? (samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"]) : (0.0, 0.0) 
 
     pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, η..., pid)
-    state_samples = ParticleFilters.ParticleCollection(Base.rand.(rng, pdgps))
+    state_samples = ParticleFilters.ParticleCollection(ProgramCausalState.(pdgps, samples.μ_predict, samples.τ_predict, samples.σ_toplevel, pid))
 
     last_observed_state = ParticleFilters.ParticleCollection(ProgramCausalState.(pdgps, samples[:, "μ_study[$ndatasets]"], samples[:, "τ_study[$ndatasets]"], samples.σ_toplevel, pid))
 
@@ -36,7 +36,7 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     return ProgramBelief(state_samples, last_observed_state, pid, data, post_stats)
 end
 
-function ProgramBelief(m::OlsModel, data::Vector{StudyDataset}, pid::Int64, ::Random.AbstractRNG)
+function ProgramBelief(m::OlsModel, data::Vector{StudyDataset}, pid::Int64)
     logger = Logging.SimpleLogger(Logging.Error)
     samples = Logging.with_logger(logger) do 
         sample(m, data)
@@ -82,12 +82,9 @@ struct Belief <: AbstractBelief
     progbeliefs::Vector{ProgramBelief}
 end
 
-function Belief(datasets::Vector{Vector{StudyDataset}}, m::AbstractLearningModel, rng::Random.AbstractRNG) 
-    samples = [ProgramBelief(m, datasets[pid], pid, rng) for pid in 1:length(datasets)]
-        
-    #return FullBayesianBelief(samples)
-    return Belief(samples)
-end
+Belief(datasets::Vector{Vector{StudyDataset}}, m::AbstractLearningModel) = Belief([ProgramBelief(m, datasets[pid], pid) for pid in 1:length(datasets)])
+
+data(b::Belief) = data.(b.progbeliefs)
 
 function Base.rand(rng::Random.AbstractRNG, belief::Belief)
     progstates = [Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs)]
@@ -99,7 +96,6 @@ end
 expectedutility(r::AbstractRewardModel, b::Belief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
 
 struct FundingUpdater{M <: AbstractLearningModel} <: POMDPs.Updater
-    rng::Random.AbstractRNG
     model::M
 end
 
@@ -116,7 +112,7 @@ function POMDPs.update(updater::FundingUpdater, belief_old::ProgramBelief, a::Ab
             getdataset(_) |>
             push!(new_data, _)
 
-        return ProgramBelief(updater.model, new_data, belief_old.pid, updater.rng) 
+        return ProgramBelief(updater.model, new_data, belief_old.pid) 
     else
         return belief_old
     end

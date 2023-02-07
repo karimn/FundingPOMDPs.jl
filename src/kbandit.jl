@@ -26,7 +26,7 @@ struct KBanditFundingPOMDP{A <: AbstractFundingAction} <: POMDP{CausalState, A, 
 end
 
 function KBanditFundingPOMDP{A}(mdp::KBanditFundingMDP{A}, data::Vector{Vector{StudyDataset}}, m::AbstractLearningModel) where {A <: AbstractFundingAction} 
-    return KBanditFundingPOMDP{A}(mdp, Belief(data, m, mdp.rng))
+    return KBanditFundingPOMDP{A}(mdp, Belief(data, m))
 end
 
 function KBanditFundingPOMDP{A}(mdp::KBanditFundingMDP{A}, belief::Belief, m::AbstractLearningModel) where {A <: AbstractFundingAction} 

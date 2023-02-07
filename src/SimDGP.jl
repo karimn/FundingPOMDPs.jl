@@ -73,6 +73,9 @@ end
         end
     end
 
+    μ_predict ~ Normal(μ_toplevel, η_toplevel[1])
+    τ_predict ~ Normal(τ_toplevel, η_toplevel[2])
+
     return (datasets = datasets, μ_toplevel = μ_toplevel, μ_study = μ_study)
 end
 
@@ -89,7 +92,7 @@ function sample(m::TuringModel, datasets::Vector{StudyDataset})
     @pipe sim_model(m.priors, datasets; multilevel = m.multilevel) |>
         Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains; progress = false) |> 
         DataFrame(_) |>
-        select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 
+        select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study", :μ_predict, :τ_predict) 
 end 
 
 #=
