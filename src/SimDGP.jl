@@ -88,9 +88,9 @@ struct TuringModel <: AbstractBayesianModel
     TuringModel(priors::Priors; iter = 500, chains = 4, multilevel = true) = new(priors, iter, chains, multilevel)
 end
 
-function sample(m::TuringModel, datasets::Vector{StudyDataset})
+function sample(m::TuringModel, datasets::Vector{StudyDataset}; progress = false)
     @pipe sim_model(m.priors, datasets; multilevel = m.multilevel) |>
-        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains; progress = false) |> 
+        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains; progress = progress) |> 
         DataFrame(_) |>
         select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study", :μ_predict, :τ_predict) 
 end 
