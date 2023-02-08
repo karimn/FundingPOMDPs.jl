@@ -1,3 +1,8 @@
+name = "FundingPOMDPs"
+uuid = "67eeebb2-bf27-4d55-a9f3-14cb223e64b6"
+authors = ["Karim Naguib <karimn2.0@gmail.com> and contributors"]
+version = "0.1.0"
+
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
 AdvancedPS = "576499cb-2369-40b2-a588-c64705576edc"
@@ -12,22 +17,34 @@ DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 GLM = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
 Gadfly = "c91e804a-d5a3-530f-b6f0-dfbca275c004"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 MCTS = "e12ccd36-dcad-5f33-8774-9175229e7b33"
 NLsolve = "2774e3e8-f4cf-5e23-947b-6d7e65073b56"
 NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
 POMDPLinter = "f3bd98c0-eb40-45e2-9eb1-f2763262d755"
 POMDPPolicies = "182e52fb-cfd0-5e46-8c26-fd0667c990f4"
 POMDPSimulators = "e0d0a172-29c6-5d4e-96d0-f262df5d01fd"
+POMDPTools = "7588e00f-9cae-40de-98dc-e0c70c48cdd7"
 POMDPs = "a93abf59-7444-517b-a68a-c42f96afdd7d"
 Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
 ParticleFilters = "c8b314e2-9260-5cf8-ae76-3be7461ca6d0"
 Pipe = "b98c9c47-44ae-5843-9183-064241ee97a0"
 Pluto = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 RCall = "6f49c342-dc21-5d91-9882-a32aef131414"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SplitApplyCombine = "03a91e81-4c3e-53e1-a0a4-9c0c8f19dd66"
-Stan = "682df890-35be-576f-97d0-3d8c8b33a550"
-StanSample = "c1514b29-d3a0-5178-b312-660c88baa699"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
+
+[compat]
+julia = "1.8"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
