@@ -19,15 +19,12 @@ file_suffix = "_test"
 util_model = ExponentialUtilityModel(0.25)
 #util_model = RiskNeutralUtilityModel()
 
-all_sim_data = deserialize("temp-data/sim$(file_suffix).jls")
-greedy_sim_data = deserialize("temp-data/greedy_sim$(file_suffix).jls")
-pftdpw_sim_data = deserialize("temp-data/pftdpw_sim$(file_suffix).jls")
-random_sim_data = deserialize("temp-data/random_sim$(file_suffix).jls")
-freq_sim_data = deserialize("temp-data/freq_sim$(file_suffix).jls")
-
-for d in (greedy_sim_data, pftdpw_sim_data, random_sim_data, freq_sim_data)
-#    dropmissing!(d)
-    @transform!(d, :sim_id = 1:nrow(d))
+begin
+    all_sim_data = deserialize("temp-data/sim$(file_suffix).jls")
+    greedy_sim_data = @subset(all_sim_data, :plan_type .== "none")
+    pftdpw_sim_data = @subset(all_sim_data, :plan_type .== "pftdpw")
+    random_sim_data = @subset(all_sim_data, :plan_type .== "random")
+    freq_sim_data = @subset(all_sim_data, :plan_type .== "freq")
 end
 
 function calculate_util_diff(planned_reward, baseline_reward; accum = false)  
@@ -50,7 +47,7 @@ end
 do_nothing_reward = begin 
     do_nothing = ImplementEvalAction()
 
-    @pipe greedy_sim_data |> 
+    @pipe greedy_sim_data |>
         dropmissing(_, :state) |> 
         [expectedutility.(Ref(util_model), states[Not(end)], Ref(do_nothing)) for states in _.state]
 end
