@@ -343,15 +343,30 @@ inchrome(D3Tree(pftdpw_sim_data.tree[1][3], init_expand = 1))
         #plot(_, x = :step, y = :value, color = :variable, Geom.point, Geom.line, Scale.x_discrete)
         plot(_, x = :step, y = :cumul_reward, xgroup = :sim, color = :variable, Geom.subplot_grid(Geom.point, Geom.line), Scale.x_discrete)
 
-greedy_sim_data.action[3]
-freq_sim_data.action[3]
-greedy_sim_data.belief[3][1].progbeliefs
-freq_sim_data.belief[3][1].progbeliefs
-data(greedy_sim_data.belief[3][1].progbeliefs[1])
-data(freq_sim_data.belief[3][1].progbeliefs[1])
+greedy_sim_data.action[2]
+freq_sim_data.action[2]
+greedy_sim_data.belief[2][1].progbeliefs[5]
+freq_sim_data.belief[2][1].progbeliefs[5]
+data(greedy_sim_data.belief[2][1].progbeliefs[5])
+data(freq_sim_data.belief[2][1].progbeliefs[5])
 last_state_samples(greedy_sim_data.belief[3][1].progbeliefs[1])
 last_state_samples(freq_sim_data.belief[3][1].progbeliefs[1])
 greedy_sim_data.state[3][2].programstates
 expectedutility(util_model, greedy_sim_data.belief[3][1].progbeliefs[1], false)
 expectedutility(util_model, freq_sim_data.belief[3][1].progbeliefs[1], true)
-dgp(greedy_sim_data.state[3][2].programstates[1])
+dgp(greedy_sim_data.state[2][1].programstates[5])
+dgp(freq_sim_data.state[2][1].programstates[5])
+
+bayes_model = TuringModel(inference_priors; iter = NUM_TURING_MODEL_ITER)
+
+s0 = FundingPOMDPs.sample(bayes_model, data(greedy_sim_data.belief[2][1].progbeliefs[5]), progress = true)
+
+wise_bayes_model = TuringModel(dgp_priors; iter = NUM_TURING_MODEL_ITER)
+
+s1 = FundingPOMDPs.sample(wise_bayes_model, data(greedy_sim_data.belief[2][1].progbeliefs[5]), progress = true)
+
+naive_bayes_model = TuringModel(inference_priors; iter = NUM_TURING_MODEL_ITER, multilevel = false)
+
+s2 = FundingPOMDPs.sample(naive_bayes_model, data(greedy_sim_data.belief[2][1].progbeliefs[5]), progress = true)
+
+b = ProgramBelief(wise_bayes_model, data(greedy_sim_data.belief[2][1].progbeliefs[5]), 5, Random.GLOBAL_RNG)
