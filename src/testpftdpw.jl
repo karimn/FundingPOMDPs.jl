@@ -25,7 +25,7 @@ import DocOpt
 args = DocOpt.docopt(
     doc, 
     isinteractive() ? "temp-data/sim_test.jls -p 2 -s 2 -t 2 --numprocs=2 --pftdpw-iter=2" : ARGS, 
-    version = v"1"
+    version = v"0.1.0"
 )
 
 using Distributed
