@@ -16,6 +16,8 @@ function Base.show(io::IO, dataset::StudyDataset)
     Printf.@printf(io, "StudyDataset(sample means = (%.2f, %.2f), sample SD = (%.2f, %.2f))", mean(dataset.y_control), mean(dataset.y_treated), std(dataset.y_control; corrected = false), std(dataset.y_treated; corrected = false))  
 end
 
+DataFrames.DataFrame(d::StudyDataset) = vcat([DataFrames.DataFrame(y = y) for y in [d.y_control, d.y_treated]]..., source = :t => [false, true])
+
 const StudyHistory = Vector{StudyDataset}
 
 struct Priors
@@ -71,6 +73,9 @@ end
         end
     end
 
+    μ_predict ~ Normal(μ_toplevel, η_toplevel[1])
+    τ_predict ~ Normal(τ_toplevel, η_toplevel[2])
+
     return (datasets = datasets, μ_toplevel = μ_toplevel, μ_study = μ_study)
 end
 
@@ -83,11 +88,11 @@ struct TuringModel <: AbstractBayesianModel
     TuringModel(priors::Priors; iter = 500, chains = 4, multilevel = true) = new(priors, iter, chains, multilevel)
 end
 
-function sample(m::TuringModel, datasets::Vector{StudyDataset})
+function sample(m::TuringModel, datasets::Vector{StudyDataset}; progress = false)
     @pipe sim_model(m.priors, datasets; multilevel = m.multilevel) |>
-        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains; progress = false) |> 
+        Turing.sample(_, Turing.NUTS(), Turing.MCMCThreads(), m.iter, m.chains; progress = progress) |> 
         DataFrame(_) |>
-        select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study") 
+        select(_, :μ_toplevel, :τ_toplevel, :σ_toplevel, r"η_toplevel", r"μ_study", r"τ_study", :μ_predict, :τ_predict) 
 end 
 
 #=
@@ -100,3 +105,13 @@ function StanModel(hyperparam::Hypergeometric)
     StanModel(hyperparam, StanSample.SampleModel("funding", "../stan/sim_model.stan", num_threads = 4, ))
 end
 =#
+
+struct OlsModel <: AbstractFrequentistModel
+end
+
+function sample(::OlsModel, datasets::Vector{StudyDataset})
+    fit = lm(@formula(y ~ t), vcat(DataFrames.DataFrame.(datasets)...))
+    τ_pvalue = coeftable(fit).cols[4][2]
+
+    return DataFrame(μ_toplevel = coef(fit)[1], τ_toplevel = τ_pvalue <= 0.10 ? coef(fit)[2] : 0.0, σ_toplevel = deviance(fit) / dof_residual(fit))
+end

@@ -13,7 +13,7 @@ end
 
 ProgramBelief(state_samples::ParticleFilters.AbstractParticleBelief, pid::Int64) = ProgramBelief(state_samples, nothing, pid, StudyDataset[], nothing)
 
-function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64, rng::Random.AbstractRNG)
+function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid::Int64)
     ndatasets = length(data) 
 
     logger = Logging.SimpleLogger(Logging.Error)
@@ -26,7 +26,7 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     η = "η_toplevel[1]" in sample_cols && "η_toplevel[1]" in sample_cols ? (samples[:, "η_toplevel[1]"], samples[:, "η_toplevel[2]"]) : (0.0, 0.0) 
 
     pdgps = ProgramDGP.(samples.μ_toplevel, samples.τ_toplevel, samples.σ_toplevel, η..., pid)
-    state_samples = ParticleFilters.ParticleCollection(Base.rand.(rng, pdgps))
+    state_samples = ParticleFilters.ParticleCollection(ProgramCausalState.(pdgps, samples.μ_predict, samples.τ_predict, samples.σ_toplevel, pid))
 
     last_observed_state = ParticleFilters.ParticleCollection(ProgramCausalState.(pdgps, samples[:, "μ_study[$ndatasets]"], samples[:, "τ_study[$ndatasets]"], samples.σ_toplevel, pid))
 
@@ -34,6 +34,20 @@ function ProgramBelief(m::AbstractBayesianModel, data::Vector{StudyDataset}, pid
     post_stats = (mean(samples.μ_toplevel), mean(samples.τ_toplevel), mean(samples.σ_toplevel))
 
     return ProgramBelief(state_samples, last_observed_state, pid, data, post_stats)
+end
+
+function ProgramBelief(m::OlsModel, data::Vector{StudyDataset}, pid::Int64)
+    logger = Logging.SimpleLogger(Logging.Error)
+    samples = Logging.with_logger(logger) do 
+        sample(m, data)
+    end
+
+    pdgp = ProgramDGP(samples.μ_toplevel[1], samples.τ_toplevel[1], samples.σ_toplevel[1], pid)
+    last_observed_state = est_state = ParticleFilters.ParticleCollection([ProgramCausalState(pdgp, samples.μ_toplevel[1], samples.τ_toplevel[1], samples.σ_toplevel[1], pid)])
+
+    post_stats = (samples.μ_toplevel[1], samples.τ_toplevel[1], samples.σ_toplevel[1])
+
+    return ProgramBelief(est_state, last_observed_state, pid, data, post_stats)
 end
 
 programid(pb::ProgramBelief) = pb.pid
@@ -64,35 +78,32 @@ end
 
 Base.rand(rng::Random.AbstractRNG, pb::ProgramBelief) = Base.rand(rng, pb.state_samples)
 
-struct FullBayesianBelief <: AbstractBelief
+struct Belief <: AbstractBelief
     progbeliefs::Vector{ProgramBelief}
 end
 
-function FullBayesianBelief(datasets::Vector{Vector{StudyDataset}}, m::AbstractBayesianModel, rng::Random.AbstractRNG) 
-    samples = [ProgramBelief(m, datasets[pid], pid, rng) for pid in 1:length(datasets)]
-        
-    return FullBayesianBelief(samples)
-end
+Belief(datasets::Vector{Vector{StudyDataset}}, m::AbstractLearningModel) = Belief([ProgramBelief(m, datasets[pid], pid) for pid in 1:length(datasets)])
 
-function Base.rand(rng::Random.AbstractRNG, belief::FullBayesianBelief)
+data(b::Belief) = data.(b.progbeliefs)
+
+function Base.rand(rng::Random.AbstractRNG, belief::Belief)
     progstates = [Base.rand(rng, belief.progbeliefs[pid]) for pid in 1:length(belief.progbeliefs)]
     progdgps = dgp.(progstates)
 
     return CausalState(DGP(progdgps), progstates)
 end
 
-expectedutility(r::AbstractRewardModel, b::FullBayesianBelief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
+expectedutility(r::AbstractRewardModel, b::Belief, a::AbstractFundingAction) = sum(expectedutility(r, pb, a) for pb in b.progbeliefs)
 
-struct FullBayesianUpdater{M <: AbstractBayesianModel} <: POMDPs.Updater
-    rng::Random.AbstractRNG
-    bayesian_model::M
+struct FundingUpdater{M <: AbstractLearningModel} <: POMDPs.Updater
+    model::M
 end
 
-POMDPs.initialize_belief(::FullBayesianUpdater, belief::FullBayesianBelief) = belief
+POMDPs.initialize_belief(::FundingUpdater, belief::Belief) = belief
 
-POMDPs.update(updater::FullBayesianUpdater, belief_old::FullBayesianBelief, a::AbstractFundingAction, o::EvalObservation) = FullBayesianBelief([POMDPs.update(updater, pb, a, o) for pb in belief_old.progbeliefs])
+POMDPs.update(updater::FundingUpdater, belief_old::Belief, a::AbstractFundingAction, o::EvalObservation) = Belief([POMDPs.update(updater, pb, a, o) for pb in belief_old.progbeliefs])
 
-function POMDPs.update(updater::FullBayesianUpdater, belief_old::ProgramBelief, a::AbstractFundingAction, o::EvalObservation) 
+function POMDPs.update(updater::FundingUpdater, belief_old::ProgramBelief, a::AbstractFundingAction, o::EvalObservation) 
     if evaluates(a, belief_old) 
         new_data = copy(data(belief_old))
 
@@ -101,7 +112,7 @@ function POMDPs.update(updater::FullBayesianUpdater, belief_old::ProgramBelief, 
             getdataset(_) |>
             push!(new_data, _)
 
-        return ProgramBelief(updater.bayesian_model, new_data, belief_old.pid, updater.rng) 
+        return ProgramBelief(updater.model, new_data, belief_old.pid) 
     else
         return belief_old
     end

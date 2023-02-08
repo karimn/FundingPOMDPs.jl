@@ -1,8 +1,10 @@
 struct CausalStateParticleBelief <: AbstractBelief
     progbeliefs::Vector{ProgramBelief}
-    bayesian_origin::Union{Nothing, FullBayesianBelief}
+    #bayesian_origin::Union{Nothing, FullBayesianBelief}
+    bayesian_origin::Union{Nothing, Belief}
 
-    function CausalStateParticleBelief(progbeliefs::Vector{ProgramBelief}, origin::Union{Nothing, FullBayesianBelief} = nothing) 
+    #function CausalStateParticleBelief(progbeliefs::Vector{ProgramBelief}, origin::Union{Nothing, FullBayesianBelief} = nothing) 
+    function CausalStateParticleBelief(progbeliefs::Vector{ProgramBelief}, origin::Union{Nothing, Belief} = nothing) 
         return new(progbeliefs, origin)
     end
 end
@@ -40,10 +42,10 @@ original_bayesian_beliefs(b::CausalStateParticleBelief) = b.bayesian_origin
 
 struct MultiBootstrapFilter <: POMDPs.Updater    
     filters::Vector{ParticleFilters.BasicParticleFilter}
-    bayes_updater::FullBayesianUpdater 
+    bayes_updater::FundingUpdater 
 end
 
-function MultiBootstrapFilter(model::KBanditFundingPOMDP, n::Int, fbu::FullBayesianUpdater, rng::Random.AbstractRNG = Random.GLOBAL_RNG)  
+function MultiBootstrapFilter(model::KBanditFundingPOMDP, n::Int, fbu::FundingUpdater, rng::Random.AbstractRNG = Random.GLOBAL_RNG)  
     return MultiBootstrapFilter(
         [ParticleFilters.BasicParticleFilter(pbandit, pbandit, ParticleFilters.LowVarianceResampler(n), n, rng) for pbandit in programbandits(model)],
         fbu
@@ -77,5 +79,6 @@ end
 
 POMDPs.initialize_belief(::MultiBootstrapFilter, belief::CausalStateParticleBelief) = belief
 
-POMDPs.initialize_belief(updater::MultiBootstrapFilter, belief::FullBayesianBelief) = CausalStateParticleBelief(belief.progbeliefs, belief)
+#POMDPs.initialize_belief(updater::MultiBootstrapFilter, belief::FullBayesianBelief) = CausalStateParticleBelief(belief.progbeliefs, belief)
+POMDPs.initialize_belief(::MultiBootstrapFilter, belief::Belief) = CausalStateParticleBelief(belief.progbeliefs, belief)
 

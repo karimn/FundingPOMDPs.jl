@@ -2,7 +2,7 @@ doc = """
 Funding POMDP simulation.
 
 Usage:
-    testpftdpw.jl <greedy file> <planned file> <random file> [options] [--risk-neutral | --alpha=<alpha>]
+    testpftdpw.jl <sim file> [options] [--risk-neutral | --alpha=<alpha>]
 
 Options:
     --append, -a                               Append data
@@ -17,15 +17,14 @@ Options:
     --save-pftdpw-tree                         Save MCTS tree in action info
     --k-state=<k>                              State hyperparameter k [default: 4.5]
     --reward-only                              Return rewards only in simulation data
+    --use-dgp-priors                           Use the same priors for the DGP and inference.
 """
-
-# --plan-algo=<algo>                         Planning algorithm (pftdpw, random) [default: pftdpw]
 
 import DocOpt
 
 args = DocOpt.docopt(
     doc, 
-    isinteractive() ? "../temp-data/greedy_sim_test.jls ../temp-data/pftdpw_sim_test.jls ../temp-data/random_sim_test.jls -p 2 -s 2 -t 2 --numprocs=2 --pftdpw-iter=2" : ARGS, 
+    isinteractive() ? "temp-data/sim_test.jls -p 2 -s 2 -t 2 --numprocs=2 --pftdpw-iter=2" : ARGS, 
     version = v"1"
 )
 
@@ -43,7 +42,7 @@ end
 @everywhere begin 
     using .FundingPOMDPs
 
-    using DataFrames, StatsBase, Base.Threads, Distributions
+    using DataFrames, StatsBase, Base.Threads, Distributions, Pipe
 
     import Random, Serialization
     import POMDPs, POMDPTools, POMDPSimulators
@@ -56,7 +55,6 @@ end
 
 const RNG = Random.MersenneTwister()
 const NUM_PROGRAMS = parse(Int, args["--numprograms"])
-const NUM_SIM = parse(Int, args["--numsim"])
 const NUM_SIM_STEPS = parse(Int, args["--numsteps"])  
 const NUM_TURING_MODEL_ITER = 1_000
 const NUM_FILTER_PARTICLES = 2_000
@@ -78,6 +76,15 @@ inference_priors = Priors(
     η_μ = truncated(Normal(0, 2.0), 0, Inf),
     η_τ = truncated(Normal(0, 2.0), 0, Inf)
 )
+
+bayes_model = TuringModel(args["--use-dgp-priors"] ? dgp_priors : inference_priors; iter = NUM_TURING_MODEL_ITER)
+bayes_updater = FundingUpdater(bayes_model)
+
+ols_model = OlsModel()
+ols_updater = FundingUpdater(ols_model)
+
+#naive_bayes_model = TuringModel(inference_priors; iter = NUM_TURING_MODEL_ITER, multilevel = false)
+#naive_bayes_updater = FullBayesianUpdater(bayes_model)
 
 util_model = args["--risk-neutral"] ? RiskNeutralUtilityModel() : ExponentialUtilityModel(parse(Float64, args["--alpha"]))
 
@@ -101,36 +108,42 @@ pftdpw_solver = MCTS.DPWSolver(
     rng = RNG 
 )
 
-bayes_model = TuringModel(inference_priors; iter = NUM_TURING_MODEL_ITER)
-bayes_updater = FullBayesianUpdater(RNG, bayes_model)
-
-#naive_bayes_model = TuringModel(inference_hyperparam; multilevel = false)
-#naive_bayes_updater = FullBayesianUpdater(RNG, bayes_model)
+const NUM_SIM = parse(Int, args["--numsim"])
 
 planned_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 greedy_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 random_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
+freq_sims = Vector{POMDPTools.Sim}(undef, NUM_SIM)
 
 pm = ProgressMeter.Progress(NUM_SIM, desc = "Preparing sims...")
 
 @threads for sim_index in 1:NUM_SIM
     dgp_rng = Random.MersenneTwister()
 
+    greedy_sim_rng = Random.MersenneTwister()
+    planned_sim_rng = copy(greedy_sim_rng)
+    random_sim_rng = copy(greedy_sim_rng)
+    freq_sim_rng = copy(greedy_sim_rng)
+
     planned_dgp = DGP(dgp_priors, dgp_rng, NUM_PROGRAMS)
     greedy_dgp = deepcopy(planned_dgp)
+    random_dgp = deepcopy(planned_dgp)
+    freq_dgp = deepcopy(planned_dgp)
 
-    init_s = Base.rand(RNG, planned_dgp; state_chain_length = NUM_SIM_STEPS)
+    init_s = Base.rand(RNG, planned_dgp; state_chain_length = NUM_SIM_STEPS + 1) # One more for the pre-state
 
     planned_mdp = KBanditFundingMDP{SeparateImplementEvalAction}(
         util_model,
         0.95,
         50,
-        planned_dgp,
-        explore_only_actionset_factory;
-        curr_state = init_s
+        explore_only_actionset_factory,
+        RNG,
+        init_s
     )
+    
+    bayes_b = nothing
 
-    planned_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction, FullBayesianBelief}(planned_mdp, bayes_model)
+    planned_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction}(planned_mdp, bayes_model)
 
     particle_updater = MultiBootstrapFilter(planned_pomdp, NUM_FILTER_PARTICLES, bayes_updater)
     bayes_b = initialbelief(planned_pomdp)
@@ -144,53 +157,45 @@ pm = ProgressMeter.Progress(NUM_SIM, desc = "Preparing sims...")
         util_model,
         0.95,
         50,
-        greedy_dgp,
-        select_subset_actionset_factory;
-        curr_state = init_s 
+        select_subset_actionset_factory,
+        RNG,
+        init_s 
     )
 
-    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction, FullBayesianBelief}(greedy_mdp, bayes_b) #, bayes_model)
-
+    greedy_pomdp = KBanditFundingPOMDP{ImplementOnlyAction}(greedy_mdp, bayes_b) 
     greedy_policy = POMDPs.solve(greedy_solver, greedy_pomdp)
 
-    greedy_sim_rng = Random.MersenneTwister()
-    planned_sim_rng = copy(greedy_sim_rng)
+    freq_pomdp = KBanditFundingPOMDP{SeparateImplementEvalAction}(planned_mdp, data(bayes_b), ols_model)
+    freq_random_planner = POMDPs.solve(random_solver, freq_pomdp)
 
     greedy_sims[sim_index] = POMDPSimulators.Sim(greedy_pomdp, greedy_policy, bayes_updater, initialbelief(greedy_pomdp), init_s, rng = greedy_sim_rng, max_steps = NUM_SIM_STEPS)
     planned_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = planned_sim_rng, max_steps = NUM_SIM_STEPS)
-    random_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, random_planner, bayes_updater, bayes_b, init_s, rng = planned_sim_rng, max_steps = NUM_SIM_STEPS)
-
-    #=
-    if args["--plan-algo"] == "pftdpw"
-        planned_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, pftdpw_planner, particle_updater, bayes_b, init_s, rng = planned_sim_rng, max_steps = NUM_SIM_STEPS)
-    elseif args["--plan-algo"] == "random"
-        planned_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, random_planner, bayes_updater, bayes_b, init_s, rng = planned_sim_rng, max_steps = NUM_SIM_STEPS)
-    else
-        error("Unknown planning algorithm '$(args["--plan-algo"])'")
-    end
-    =#
+    random_sims[sim_index] = POMDPSimulators.Sim(planned_pomdp, random_planner, bayes_updater, bayes_b, init_s, rng = random_sim_rng, max_steps = NUM_SIM_STEPS)
+    freq_sims[sim_index] = POMDPSimulators.Sim(freq_pomdp, freq_random_planner, ols_updater, initialbelief(freq_pomdp), init_s, rng = freq_sim_rng, max_steps = NUM_SIM_STEPS)
 
     ProgressMeter.next!(pm)
 end
 
 function create_sim_data_getter(actual_reward_only = false)
     function inner_get_sim_data(sim::POMDPTools.Sim, hist::POMDPTools.SimHistory)
-        sim_data = (actual_reward = collect(POMDPSimulators.reward_hist(hist)),)
+        actions = collect(POMDPSimulators.action_hist(hist)) 
+        beliefs = collect(POMDPSimulators.belief_hist(hist))
+
+        sim_data = (
+            state = collect(POMDPSimulators.state_hist(hist)),
+            action = actions, 
+            actual_reward = collect(POMDPSimulators.reward_hist(hist)),
+            expected_reward = [expectedutility(rewardmodel(sim.pomdp), b, a) for (b, a) in zip(beliefs, actions)],
+            total_undiscounted_actual_reward = POMDPSimulators.undiscounted_reward(hist)
+        )
 
         if !actual_reward_only
-            actions = collect(POMDPSimulators.action_hist(hist)) 
-            beliefs = collect(POMDPSimulators.belief_hist(hist))
             trees = [ s_ainfo !== nothing && haskey(s_ainfo, :tree) ? s_ainfo[:tree] : missing for s_ainfo in POMDPSimulators.ainfo_hist(hist) ]
 
             sim_data = (
-                action = actions, 
                 sim_data...,
                 belief = beliefs,
-                expected_reward = [expectedutility(rewardmodel(sim.pomdp), b, a) for (b, a) in zip(beliefs, actions)],
-                state = collect(POMDPSimulators.state_hist(hist)),
-                tree = trees,
-
-                total_undiscounted_actual_reward = POMDPSimulators.undiscounted_reward(hist)
+                tree = trees
             )
         end
 
@@ -201,38 +206,25 @@ function create_sim_data_getter(actual_reward_only = false)
 end
 
 run_fun = NUM_PROCS > 1 ? POMDPTools.run_parallel : POMDPTools.run
-
 get_sim_data = create_sim_data_getter(args["--reward-only"])
 
-greedy_sim_data = run_fun(get_sim_data, greedy_sims; show_progress = true)
-planned_sim_data = run_fun(get_sim_data, planned_sims; show_progress = true) 
-random_sim_data = run_fun(get_sim_data, random_sims; show_progress = true) 
+all_sim_data = @pipe vcat(greedy_sims, planned_sims, random_sims, freq_sims) |> 
+    run_fun(get_sim_data, _; show_progress = true) |> 
+    insertcols!(_, :plan_type => repeat(["none", "pftdpw", "random", "freq"], inner = NUM_SIM))
 
-if args["--append"]
+function append_sim_data(d, file)
     try
-        global greedy_sim_data = vcat(Serialization.deserialize(args["<greedy file>"]), greedy_sim_data; cols = :union)
+        d = vcat(Serialization.deserialize(file), d; cols = :union)
     catch 
-        @warn "Output file doesn't exist -- creating new file" file = args["<greedy file>"]
+        @warn "Output file doesn't exist -- creating new file" file = file 
     end
 
-    try
-        global planned_sim_data = vcat(Serialization.deserialize(args["<planned file>"]), planned_sim_data; cols = :union)
-    catch 
-        @warn "Output file doesn't exist -- creating new file" file = args["<planned file>"]
-    end
-
-    try
-        global random_sim_data = vcat(Serialization.deserialize(args["<random file>"]), random_sim_data; cols = :union)
-    catch 
-        @warn "Output file doesn't exist -- creating new file" file = args["<random file>"]
-    end
+    return d
 end
 
-Serialization.serialize(args["<greedy file>"], greedy_sim_data)
-Serialization.serialize(args["<planned file>"], planned_sim_data)
-Serialization.serialize(args["<random file>"], random_sim_data)
+if args["--append"]
+    global all_sim_data = append_sim_data(all_sim_data, args["<sim file>"])
+end
 
-#x = Serialization.deserialize("greedy_sim_test.jls")
-#pftdpw_sim_data = Serialization.deserialize("pftdpw_sim.jls")
+Serialization.serialize(args["<sim file>"], all_sim_data)
 
-#Serialization.deserialize("Code/funding-portfolio/src/greedy_sim.jls")
