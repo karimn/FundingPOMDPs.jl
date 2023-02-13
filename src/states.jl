@@ -21,7 +21,6 @@ expectedlevel(pcs::ProgramCausalState, a::Bool) = pcs.μ + (a ? pcs.τ : 0)
 expectedlevel(pcs::ProgramCausalState, a::AbstractFundingAction) = expectedlevel(pcs, implements(a, pcs)) 
 
 expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::Bool) = expectedutility(m, expectedlevel(pcs, a), pcs.σ)
-expectedutility(m::AbstractRewardModel, pcs::ProgramCausalState, a::AbstractFundingAction) = expectedutility(m, pcs, implements(a, pcs))
 
 getprogramid(ps::ProgramCausalState) = ps.programid
 

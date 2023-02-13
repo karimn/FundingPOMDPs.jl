@@ -8,7 +8,6 @@ struct ProgramDGP <: AbstractProgramDGP
     programid::Int64
 end
 
-
 ProgramDGP(μ::Float64, τ::Float64, σ::Float64, pid::Int64) = ProgramDGP(μ, τ, σ, 0.0, 0.0, pid)
 
 function ProgramDGP(priors::Priors, rng::Random.AbstractRNG, programid::Int64) 
@@ -28,8 +27,6 @@ function expectedutility(r::AbstractRewardModel, progdgp::ProgramDGP, impl::Bool
         sqrt(progdgp.σ^2 + progdgp.η_μ^2 + (impl ? progdgp.η_τ^2 : 0))
     )
 end
-
-expectedutility(r::AbstractRewardModel, progdgp::ProgramDGP, a::AbstractFundingAction) = expectedutility(r, progdgp, implements(a, progdgp))
 
 struct DGP <: AbstractDGP
     programdgps::Vector{ProgramDGP}

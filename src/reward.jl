@@ -1,3 +1,5 @@
+expectedutility(r::AbstractRewardModel, w::Rewardable, a::AbstractFundingAction) = expectedutility(r, w, implements(a, w))
+
 struct ExponentialUtilityModel <: AbstractRewardModel
     α::Float64
 end
