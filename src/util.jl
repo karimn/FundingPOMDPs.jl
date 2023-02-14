@@ -9,6 +9,7 @@ function get_rewards_data(sb::Vector{R}, actlist::Vector{T}, util_model::Abstrac
         DataFrame(
             step = step_state[1],
             reward = expectedutility.(Ref(util_model), Ref(step_state[2]), actlist),
+            ex_ante_reward = expectedutility.(Ref(util_model), Ref(dgp(step_state[2])), actlist),
             actprog = [isempty(a.implement_programs) ? 0 : first(a.implement_programs) for a in actlist]
         ) 
     end |>
@@ -47,4 +48,15 @@ function get_actions_data(avv::Vector{Vector{SeparateImplementEvalAction}})
         groupby(_, :sim) |>
         transform!(_, eachindex => :step) |>
         DataFrames.stack(_, [:implement_programs, :eval_programs], variable_name = :action_type, value_name = :pid)
+end
+
+function get_actions_data(av::Vector{SeparateImplementEvalAction}) 
+    @pipe av |>
+        DataFrame(_) |>
+        @rtransform(
+            _, 
+            :implement_programs = isempty(:implement_programs) ? 0 : first(:implement_programs),
+            :eval_programs = isempty(:eval_programs) ? 0 : first(:eval_programs)
+        ) |>
+        transform!(_, eachindex => :step) 
 end
