@@ -113,5 +113,5 @@ function sample(::OlsModel, datasets::Vector{StudyDataset})
     fit = lm(@formula(y ~ t), vcat(DataFrames.DataFrame.(datasets)...))
     τ_pvalue = coeftable(fit).cols[4][2]
 
-    return DataFrame(μ_toplevel = coef(fit)[1], τ_toplevel = τ_pvalue <= 0.10 ? coef(fit)[2] : 0.0, σ_toplevel = deviance(fit) / dof_residual(fit))
+    return DataFrame(μ_toplevel = coef(fit)[1], τ_toplevel = τ_pvalue <= 0.10 ? coef(fit)[2] : 0.0, σ_toplevel = sqrt(deviance(fit) / dof_residual(fit)))
 end
