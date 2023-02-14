@@ -12,6 +12,7 @@ data {
   int<lower = 0, upper = 1> fit;
   int<lower = 0, upper = 1> sim;
   int<lower = 0, upper = 1> sim_forward;
+  int<lower = 0, upper = 1> sigma_eta_inv_gamma_priors;
  
   int n_control_sim;
   int n_treated_sim;
@@ -29,6 +30,10 @@ data {
   real<lower = 0> tau_sd;
   real<lower = 0> sigma_sd;
   vector<lower = 0>[3] eta_sd;
+  real<lower = 0> sigma_alpha;
+  real<lower = 0> sigma_beta;
+  real<lower = 0> eta_alpha;
+  real<lower = 0> eta_beta;
 }
 
 parameters {
@@ -55,8 +60,14 @@ transformed parameters {
 model {
   mu_toplevel ~ normal(0, mu_sd);
   tau_toplevel ~ normal(tau_mean, tau_sd);
-  sigma_toplevel ~ normal(0, sigma_sd);
-  eta_toplevel ~ normal(0, eta_sd[:2]);
+  
+  if (sigma_eta_inv_gamma_priors) {
+    sigma_toplevel ~ inv_gamma(sigma_alpha, sigma_beta);
+    eta_toplevel ~ inv_gamma(eta_alpha, eta_beta);
+  } else {
+    sigma_toplevel ~ normal(0, sigma_sd);
+    eta_toplevel ~ normal(0, eta_sd[:2]);
+  }
   
   mu_study_raw ~ std_normal();
   tau_study_raw ~ std_normal();
