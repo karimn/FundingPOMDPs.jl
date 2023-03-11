@@ -3,7 +3,7 @@ implements(a::AbstractFundingAction, progdgp::ProgramDGP) = implements(a, progdg
 implements(a::AbstractFundingAction, pcs::ProgramCausalState) = implements(a, pcs.programid)
 evaluates(a::AbstractFundingAction, pb::ProgramBelief) = evaluates(a, pb.pid) 
 
-@with_kw struct ImplementEvalAction <: AbstractFundingAction
+@with_kw_noshow struct ImplementEvalAction <: AbstractFundingAction
     implement_eval_programs::BitSet = BitSet() 
 end
 
@@ -15,7 +15,7 @@ get_evaluated_program_ids(a::ImplementEvalAction) = a.implement_eval_programs
 
 Base.show(io::IO, a::ImplementEvalAction) = print(io, "ImplementEvalAction([$(a.implement_eval_programs)])")  
 
-@with_kw struct ImplementOnlyAction <: AbstractFundingAction
+@with_kw_noshow struct ImplementOnlyAction <: AbstractFundingAction
     implement_programs::BitSet = BitSet() 
 end
 
@@ -31,7 +31,7 @@ Base.show(io::IO, a::ImplementOnlyAction) = print(io, "ImplementOnlyAction([$(a.
 
 Base.length(as::AbstractActionSet) = numactions(as)
 
-@with_kw struct SeparateImplementEvalAction <: AbstractFundingAction
+@with_kw_noshow struct SeparateImplementEvalAction <: AbstractFundingAction
     implement_programs::BitSet = BitSet() 
     eval_programs::BitSet = BitSet() 
 end
