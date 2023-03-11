@@ -9,14 +9,6 @@ struct KBanditFundingMDP{A <: AbstractFundingAction} <: MDP{CausalState, A}
     pre_state::CausalState
 end
 
-#=
-function KBanditFundingMDP{A}(r::AbstractRewardModel, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}; rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A}
-    curr_state = Base.rand(rng, dgp)
-
-    return KBanditFundingMDP{A}(r, d, ss, asf, rng, curr_state)
-end 
-=#
-
 mdp(m::KBanditFundingMDP) = m 
 
 struct KBanditFundingPOMDP{A <: AbstractFundingAction} <: POMDP{CausalState, A, EvalObservation}

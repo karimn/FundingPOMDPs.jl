@@ -24,7 +24,6 @@ include("SimDGP.jl")
 include("reward.jl")
 include("dgp.jl")
 include("states.jl")
-include("reward.jl")
 include("observations.jl")
 include("beliefs.jl")
 include("actions.jl")
@@ -37,7 +36,7 @@ include("util.jl")
 export Rewardable
 export StudyDataset, Priors, sim_model 
 export AbstractDGP, AbstractProgramDGP, AbstractState, expectedlevel
-export DGP, ProgramDGP, CausalState, dgp
+export DGP, ProgramDGP, CausalState, dgp, next_state, prev_state
 export AbstractEvalObservation
 export EvalObservation, getdatasets
 export AbstractRewardModel 
