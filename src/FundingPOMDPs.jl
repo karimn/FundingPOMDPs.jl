@@ -50,7 +50,7 @@ export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementA
 export initialbelief, rewardmodel, initialstate
 export Belief, ProgramBelief, FundingUpdater
 export utility_particles, programid, state_samples, last_state_samples, programbeliefs, data
-export BayesianGreedySolver
+export GreedySolver
 export MultiBootstrapFilter, CausalStateParticleBelief
 export TuringModel, OlsModel, sample
 export get_rewards_data, get_beliefs_data, get_dgp_data, get_states_data, get_actions_data

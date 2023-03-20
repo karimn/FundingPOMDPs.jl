@@ -14,6 +14,8 @@ function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet)
     as.actions[actid] 
 end
 
+Base.sort(v::KBanditActionSet; kwargs...) = Base.sort(v.actions; kwargs...)
+
 struct SimpleActionSetFactory{A} <: AbstractActionSetFactory{A}
     actionset::KBanditActionSet{A}
 end
