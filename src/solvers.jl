@@ -6,7 +6,7 @@ end
 
 POMDPs.value(p::GreedyPlanner, b::AbstractBelief, a::AbstractFundingAction) = expectedutility(rewardmodel(p.pomdp), b, a)
 
-POMDPs.action(p::GreedyPlanner, b::AbstractBelief) = sort(POMDPs.actions(p.pomdp); by = a -> POMDPs.value(p, b, a), rev = true)[p.nthbest]
+POMDPs.action(p::GreedyPlanner, b::AbstractBelief) = sort(POMDPs.actions(p.pomdp, b); by = a -> POMDPs.value(p, b, a), rev = true)[p.nthbest]
 
 POMDPs.value(p::GreedyPlanner, b::AbstractBelief) = POMDPs.value(p, b, POMDPs.action(p, b))
 
