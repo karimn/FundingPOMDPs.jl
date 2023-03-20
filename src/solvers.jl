@@ -8,6 +8,8 @@ POMDPs.value(p::GreedyPlanner, b::AbstractBelief, a::AbstractFundingAction) = ex
 
 POMDPs.action(p::GreedyPlanner, b::AbstractBelief) = sort(POMDPs.actions(p.pomdp, b); by = a -> POMDPs.value(p, b, a), rev = true)[p.nthbest]
 
+POMDPs.action(p::GreedyPlanner{SeparateImplementEvalAction}, b::AbstractBelief) = sort(POMDPs.actions(p.pomdp, b); by = a -> POMDPs.value(p, b, ImplementOnlyAction(get_evaluated_program_ids(a))), rev = true)[p.nthbest]
+
 POMDPs.value(p::GreedyPlanner, b::AbstractBelief) = POMDPs.value(p, b, POMDPs.action(p, b))
 
 #POMDPs.updater(p::BayesianGreedyPlanner) = FullBayesianUpdater(hyperparam(p.pomdp))
