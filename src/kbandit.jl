@@ -1,5 +1,5 @@
 
-struct KBanditFundingMDP{A <: AbstractFundingAction} <: MDP{CausalState, A}
+struct KBanditFundingMDP{A <: AbstractFundingAction} <: FundingPOMDPs.MDP{A}
     rewardmodel::AbstractRewardModel
     discount::Float64
     studysamplesize::Int64
@@ -11,7 +11,7 @@ end
 
 mdp(m::KBanditFundingMDP) = m 
 
-struct KBanditFundingPOMDP{A <: AbstractFundingAction} <: POMDP{CausalState, A, EvalObservation}
+struct KBanditFundingPOMDP{A <: AbstractFundingAction} <: FundingPOMDPs.POMDP{A}
     mdp::KBanditFundingMDP{A}
     curr_belief::Belief
 end

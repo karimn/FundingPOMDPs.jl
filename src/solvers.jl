@@ -1,6 +1,6 @@
 
-struct GreedyPlanner{M} <: POMDPs.Policy where M <: POMDPs.POMDP
-    pomdp::M
+struct GreedyPlanner{A} <: POMDPs.Policy where A <: AbstractFundingAction 
+    pomdp::FundingPOMDPs.POMDP{A}
     nthbest::Int
 end
 
@@ -16,4 +16,4 @@ POMDPs.value(p::GreedyPlanner, b::AbstractBelief) = POMDPs.value(p, b, POMDPs.ac
     nthbest::Int = 1
 end
 
-POMDPs.solve(sol::GreedySolver, m::POMDPs.POMDP) = GreedyPlanner(m, sol.nthbest) 
+POMDPs.solve(sol::GreedySolver, m::FundingPOMDPs.POMDP) = GreedyPlanner(m, sol.nthbest) 
