@@ -1,7 +1,7 @@
 name = "FundingPOMDPs"
 uuid = "67eeebb2-bf27-4d55-a9f3-14cb223e64b6"
 authors = ["Karim Naguib <karimn2.0@gmail.com> and contributors"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
