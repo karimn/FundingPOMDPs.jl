@@ -20,7 +20,7 @@ struct SimpleActionSetFactory{A} <: AbstractActionSetFactory{A}
     actionset::KBanditActionSet{A}
 end
 
-actions(asf::SimpleActionSetFactory, ::Union{CausalState, AbstractBelief}) = asf.actionset
+actions(asf::SimpleActionSetFactory, ::Union{CausalState, AbstractBelief, Nothing} = nothing) = asf.actionset
 
 function SelectProgramSubsetActionSetFactory(nprograms, nimplement)
     actionlist = map(Combinatorics.combinations(1:nprograms, nimplement)) do programidx
