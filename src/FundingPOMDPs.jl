@@ -72,7 +72,7 @@ export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
 export actions
 export KBanditFundingMDP, KBanditFundingPOMDP
 export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
-export initialbelief, rewardmodel, initialstate
+export initialbelief, rewardmodel, initialstate, generate_init_data
 export Belief, ProgramBelief, FundingUpdater
 export utility_particles, programid, state_samples, last_state_samples, programbeliefs, data
 export GreedySolver

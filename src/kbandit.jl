@@ -11,6 +11,16 @@ end
 
 mdp(m::KBanditFundingMDP) = m 
 
+function generate_init_data(mdp::KBanditFundingMDP)
+    initdatasets = Vector{Vector{StudyDataset}}(undef, numprograms(mdp))
+
+    for (pid, ds) in getdatasets(Base.rand(mdp.rng, mdp.pre_state, mdp.studysamplesize))
+        initdatasets[pid] = [ds] 
+    end
+
+    return initdatasets
+end
+
 struct KBanditFundingPOMDP{A <: AbstractFundingAction} <: FundingPOMDPs.POMDP{A}
     mdp::KBanditFundingMDP{A}
     curr_belief::Belief
@@ -25,13 +35,7 @@ function KBanditFundingPOMDP{A}(mdp::KBanditFundingMDP{A}, belief::Belief, m::Ab
 end
 
 function KBanditFundingPOMDP{A}(mdp::KBanditFundingMDP{A}, m::AbstractLearningModel) where {A <: AbstractFundingAction}
-    initdatasets = Vector{Vector{StudyDataset}}(undef, numprograms(mdp))
-
-    for (pid, ds) in getdatasets(Base.rand(mdp.rng, mdp.pre_state, mdp.studysamplesize))
-        initdatasets[pid] = [ds] 
-    end
-    
-    return KBanditFundingPOMDP{A}(mdp, initdatasets, m)
+    return KBanditFundingPOMDP{A}(mdp, generate_init_data(mdp), m)
 end 
 
 function KBanditFundingPOMDP{A}(r::AbstractRewardModel, d::Float64, ss::Int64, dgp::AbstractDGP, asf::AbstractActionSetFactory{A}, rng::Random.AbstractRNG = Random.GLOBAL_RNG) where {A}
