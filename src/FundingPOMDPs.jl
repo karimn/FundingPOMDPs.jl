@@ -19,12 +19,37 @@ using Turing, GLM
 using DataFrames, DataFramesMeta
 using Pipe
 
-include("abstract.jl")
+abstract type AbstractRewardModel end
+abstract type Rewardable end
+
+abstract type AbstractBelief <: Rewardable end
+abstract type AbstractLearningModel end
+abstract type AbstractBayesianModel <: AbstractLearningModel end
+abstract type AbstractFrequentistModel <: AbstractLearningModel end
+
+abstract type AbstractDGP <: Rewardable end
+abstract type AbstractProgramDGP <: Rewardable end
+abstract type AbstractState <: Rewardable end
+abstract type AbstractProgramState <: Rewardable end
+
+abstract type AbstractStudySampleDistribution end
+abstract type AbstractSampleDistribution end
+abstract type AbstractEvalObservation end
+abstract type AbstractProgramEvalObservation end
+
+abstract type AbstractFundingAction end
+abstract type AbstractActionSet end
+abstract type AbstractActionSetFactory{A} end
+
 include("SimDGP.jl")
 include("reward.jl")
 include("dgp.jl")
 include("states.jl")
 include("observations.jl")
+
+abstract type MDP{A <: AbstractFundingAction} <: POMDPs.MDP{CausalState, A} end
+abstract type POMDP{A <: AbstractFundingAction} <: POMDPs.POMDP{CausalState, A, EvalObservation} end
+
 include("beliefs.jl")
 include("actions.jl")
 include("actionsets.jl")
@@ -47,10 +72,10 @@ export AbstractActionSet, AbstractFundingAction, AbstractActionSetFactory
 export actions
 export KBanditFundingMDP, KBanditFundingPOMDP
 export KBanditActionSet, SelectProgramSubsetActionSetFactory, SeparateImplementAndEvalActionSetFactory, ExploreOnlyActionSetFactory
-export initialbelief, rewardmodel, initialstate
+export initialbelief, rewardmodel, initialstate, generate_init_data
 export Belief, ProgramBelief, FundingUpdater
 export utility_particles, programid, state_samples, last_state_samples, programbeliefs, data
-export BayesianGreedySolver
+export GreedySolver
 export MultiBootstrapFilter, CausalStateParticleBelief
 export TuringModel, OlsModel, sample
 export get_rewards_data, get_beliefs_data, get_dgp_data, get_states_data, get_actions_data

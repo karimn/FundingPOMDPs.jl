@@ -14,11 +14,13 @@ function Base.rand(rng::Random.AbstractRNG, as::KBanditActionSet)
     as.actions[actid] 
 end
 
+Base.sort(v::KBanditActionSet; kwargs...) = Base.sort(v.actions; kwargs...)
+
 struct SimpleActionSetFactory{A} <: AbstractActionSetFactory{A}
     actionset::KBanditActionSet{A}
 end
 
-actions(asf::SimpleActionSetFactory, ::Any = missing) = asf.actionset
+actions(asf::SimpleActionSetFactory, ::Union{CausalState, AbstractBelief, Nothing} = nothing) = asf.actionset
 
 function SelectProgramSubsetActionSetFactory(nprograms, nimplement)
     actionlist = map(Combinatorics.combinations(1:nprograms, nimplement)) do programidx
