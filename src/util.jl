@@ -46,7 +46,7 @@ function get_actions_data(avv::Vector{Vector{SeparateImplementEvalAction}})
             :eval_programs = isempty(:eval_programs) ? 0 : first(:eval_programs)
         ) |>
         groupby(_, :sim) |>
-        transform!(_, eachindex => :step) |>
+        DataFrames.transform!(_, eachindex => :step) |>
         DataFrames.stack(_, [:implement_programs, :eval_programs], variable_name = :action_type, value_name = :pid)
 end
 
@@ -58,5 +58,5 @@ function get_actions_data(av::Vector{SeparateImplementEvalAction})
             :implement_programs = isempty(:implement_programs) ? 0 : first(:implement_programs),
             :eval_programs = isempty(:eval_programs) ? 0 : first(:eval_programs)
         ) |>
-        transform!(_, eachindex => :step) 
+        DataFrames.transform!(_, eachindex => :step) 
 end
